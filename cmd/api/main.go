@@ -9,71 +9,50 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yourusername/task-tracker/internal/app"
 	"github.com/yourusername/task-tracker/pkg/config"
-	"github.com/yourusername/task-tracker/pkg/database"
 	"github.com/yourusername/task-tracker/pkg/logger"
-	"github.com/yourusername/task-tracker/pkg/cache"
-	"github.com/yourusername/task-tracker/pkg/messaging"
 )
 
 func main() {
-	// Контекст с возможностью отмены
+	// Создаем контекст с возможностью отмены
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Загрузка конфигурации
+	// Загружаем конфигурацию
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Printf("Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Инициализация логгера
+	// Инициализируем логгер
 	log := logger.NewLogger(cfg.App.LogLevel, cfg.App.Environment == "production")
 	log.Info("Starting API server", map[string]interface{}{
 		"app_name": cfg.App.Name,
 		"env":      cfg.App.Environment,
 	})
 
-	// Подключение к PostgreSQL
-	db, err := database.NewPostgres(ctx, &cfg.Database, log)
+	// Инициализируем приложение
+	application, err := app.NewApplication(ctx, cfg, log)
 	if err != nil {
-		log.Fatal("Failed to connect to database", err)
+		log.Fatal("Failed to initialize application", err)
 	}
-	defer db.Close()
+	defer application.Close()
 
-	// Подключение к Redis
-	redisClient, err := cache.NewRedis(ctx, &cfg.Redis, log)
-	if err != nil {
-		log.Fatal("Failed to connect to Redis", err)
-	}
-	defer redisClient.Close()
-
-	// Инициализация Kafka Producer
-	kafkaProducer := messaging.NewKafkaProducer(&cfg.Kafka, log)
-	defer kafkaProducer.Close()
-
-	// Создание топиков Kafka (если их еще нет)
-	topics := []string{
-		cfg.Kafka.Topics.TaskCreated,
-		cfg.Kafka.Topics.TaskUpdated,
-		cfg.Kafka.Topics.TaskAssigned,
-		cfg.Kafka.Topics.TaskCommented,
-		cfg.Kafka.Topics.Notifications,
-	}
-	if err := messaging.CreateTopics(ctx, cfg.Kafka.Brokers, topics, log); err != nil {
-		log.Warn("Failed to create Kafka topics", map[string]interface{}{
-			"error": err.Error(),
-		})
+	// Проверяем подключение к базе данных
+	if err := application.DB.PingContext(ctx); err != nil {
+		log.Fatal("Failed to ping database", err)
 	}
 
-	// Здесь будет инициализация репозиториев, сервисов и API
+	// TODO: Инициализация маршрутизатора API и HTTP-обработчиков
+	// router := api.NewRouter(application)
 
 	// Настройка HTTP-сервера
 	addr := fmt.Sprintf(":%s", cfg.HTTP.Port)
 	srv := &http.Server{
 		Addr:         addr,
-		// Handler будет инициализирован позже
+		// Handler:      router,
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 		IdleTimeout:  120 * time.Second,
