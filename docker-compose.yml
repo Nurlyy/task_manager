@@ -1,0 +1,184 @@
+version: '3.8'
+
+services:
+  # API-сервис
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=taskuser
+      - DB_PASSWORD=taskpass
+      - DB_NAME=tasktracker
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=kafka:9092
+      - JWT_SECRET=your_jwt_secret_key_change_in_production
+      - LOG_LEVEL=info
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    volumes:
+      - ./configs:/app/configs
+    networks:
+      - backend-network
+
+  # Планировщик задач
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler/Dockerfile
+    restart: unless-stopped
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=taskuser
+      - DB_PASSWORD=taskpass
+      - DB_NAME=tasktracker
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=kafka:9092
+      - LOG_LEVEL=info
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    volumes:
+      - ./configs:/app/configs
+    networks:
+      - backend-network
+
+  # Сервис уведомлений
+  notifier:
+    build:
+      context: .
+      dockerfile: docker/notifier/Dockerfile
+    restart: unless-stopped
+    environment:
+      - KAFKA_BROKERS=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_USER=
+      - SMTP_PASSWORD=
+      - SMTP_FROM=noreply@tasktracker.com
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN:-}
+      - LOG_LEVEL=info
+    depends_on:
+      - redis
+      - kafka
+      - mailhog
+    volumes:
+      - ./configs:/app/configs
+      - ./templates:/app/templates
+    networks:
+      - backend-network
+
+  # Веб-сервер (Nginx)
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    volumes:
+      - ./web/static:/var/www/static
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - backend-network
+      - frontend-network
+
+  # База данных PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=taskuser
+      - POSTGRES_PASSWORD=taskpass
+      - POSTGRES_DB=tasktracker
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskuser -d tasktracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis для кэширования
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka для очереди сообщений
+  kafka:
+    image: bitnami/kafka:3.6
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka-data:/bitnami/kafka
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Сервис для отладки отправки email
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP сервер
+      - "8025:8025" # Веб-интерфейс
+    networks:
+      - backend-network
+
+# Выделенные тома для хранения данных
+volumes:
+  postgres-data:
+  redis-data:
+  kafka-data:
+
+# Сети
+networks:
+  backend-network:
+    driver: bridge
+  frontend-network:
+    driver: bridge
