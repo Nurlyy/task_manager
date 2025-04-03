@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
-	"github.com/yourusername/task-tracker/pkg/config"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/pkg/config"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // KafkaProducer представляет клиент для отправки сообщений в Kafka

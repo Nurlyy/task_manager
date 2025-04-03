@@ -10,9 +10,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 
-	"github.com/yourusername/task-tracker/internal/domain"
-	"github.com/yourusername/task-tracker/pkg/auth"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/domain"
+	"github.com/nurlyy/task_manager/pkg/auth"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // StandardResponseData представляет стандартную структуру ответа API

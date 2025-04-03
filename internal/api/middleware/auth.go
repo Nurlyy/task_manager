@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yourusername/task-tracker/pkg/auth"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/pkg/auth"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // AuthMiddleware предоставляет middleware для аутентификации пользователей

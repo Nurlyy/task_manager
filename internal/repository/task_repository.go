@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/yourusername/task-tracker/internal/domain"
+	"github.com/nurlyy/task_manager/internal/domain"
 )
 
 // TaskRepository определяет интерфейс для работы с хранилищем задач

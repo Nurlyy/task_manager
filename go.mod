@@ -1,4 +1,4 @@
-module github.com/yourusername/task-tracker
+module github.com/nurlyy/task_manager
 
 go 1.21
 

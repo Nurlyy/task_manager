@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yourusername/task-tracker/internal/api"
-	"github.com/yourusername/task-tracker/internal/app"
-	"github.com/yourusername/task-tracker/internal/service"
-	"github.com/yourusername/task-tracker/pkg/auth"
-	"github.com/yourusername/task-tracker/pkg/config"
-	applogger "github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/api"
+	"github.com/nurlyy/task_manager/internal/app"
+	"github.com/nurlyy/task_manager/internal/service"
+	"github.com/nurlyy/task_manager/pkg/auth"
+	"github.com/nurlyy/task_manager/pkg/config"
+	applogger "github.com/nurlyy/task_manager/pkg/logger"
 )
 
 func main() {

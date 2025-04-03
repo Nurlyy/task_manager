@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-redis/redis/v8"
 
-	"github.com/yourusername/task-tracker/pkg/config"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/pkg/config"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // Redis представляет клиент для работы с Redis

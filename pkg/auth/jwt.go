@@ -7,7 +7,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/yourusername/task-tracker/pkg/config"
+	"github.com/nurlyy/task_manager/pkg/config"
 )
 
 // Стандартные ошибки

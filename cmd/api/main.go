@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yourusername/task-tracker/internal/app"
-	"github.com/yourusername/task-tracker/pkg/config"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/app"
+	"github.com/nurlyy/task_manager/pkg/config"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 func main() {

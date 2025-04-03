@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/yourusername/task-tracker/internal/domain"
+	"github.com/nurlyy/task_manager/internal/domain"
 )
 
 // UserRepository определяет интерфейс для работы с хранилищем пользователей

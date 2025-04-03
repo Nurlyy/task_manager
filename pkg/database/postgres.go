@@ -8,8 +8,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq" // драйвер PostgreSQL
 
-	"github.com/yourusername/task-tracker/pkg/config"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/pkg/config"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // Postgres представляет клиент для работы с PostgreSQL

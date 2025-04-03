@@ -5,13 +5,13 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/yourusername/task-tracker/internal/repository/cache"
-	"github.com/yourusername/task-tracker/internal/repository/postgres"
-	"github.com/yourusername/task-tracker/internal/messaging"
-	"github.com/yourusername/task-tracker/pkg/config"
-	"github.com/yourusername/task-tracker/pkg/database"
-	redisClient "github.com/yourusername/task-tracker/pkg/cache"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/repository/cache"
+	"github.com/nurlyy/task_manager/internal/repository/postgres"
+	"github.com/nurlyy/task_manager/internal/messaging"
+	"github.com/nurlyy/task_manager/pkg/config"
+	"github.com/nurlyy/task_manager/pkg/database"
+	redisClient "github.com/nurlyy/task_manager/pkg/cache"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // Repositories содержит все репозитории для работы с хранилищами данных

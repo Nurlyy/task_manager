@@ -8,12 +8,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"github.com/yourusername/task-tracker/internal/api/handlers"
-	mw "github.com/yourusername/task-tracker/internal/api/middleware"
-	"github.com/yourusername/task-tracker/internal/service"
-	"github.com/yourusername/task-tracker/pkg/auth"
-	"github.com/yourusername/task-tracker/pkg/config"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/api/handlers"
+	mw "github.com/nurlyy/task_manager/internal/api/middleware"
+	"github.com/nurlyy/task_manager/internal/service"
+	"github.com/nurlyy/task_manager/pkg/auth"
+	"github.com/nurlyy/task_manager/pkg/config"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // Server представляет HTTP сервер API

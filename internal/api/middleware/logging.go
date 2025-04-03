@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // LoggingMiddleware предоставляет middleware для логирования HTTP запросов

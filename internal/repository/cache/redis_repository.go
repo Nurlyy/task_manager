@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/yourusername/task-tracker/internal/domain"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/domain"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // Префиксы ключей для разных типов данных

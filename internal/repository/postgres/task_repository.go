@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/yourusername/task-tracker/internal/domain"
-	"github.com/yourusername/task-tracker/internal/repository"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/domain"
+	"github.com/nurlyy/task_manager/internal/repository"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // TaskRepository реализует репозиторий задач с использованием PostgreSQL

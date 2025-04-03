@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // RateLimitStrategy определяет стратегию ограничения запросов

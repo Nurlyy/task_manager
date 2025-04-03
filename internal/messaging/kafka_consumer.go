@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
-	"github.com/yourusername/task-tracker/pkg/logger"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // KafkaConsumer реализует интерфейс потребителя для получения сообщений из Kafka

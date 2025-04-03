@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/yourusername/task-tracker/internal/domain"
-	"github.com/yourusername/task-tracker/internal/service"
+	"github.com/nurlyy/task_manager/internal/domain"
+	"github.com/nurlyy/task_manager/internal/service"
 )
 
 // TaskHandler обрабатывает запросы, связанные с задачами

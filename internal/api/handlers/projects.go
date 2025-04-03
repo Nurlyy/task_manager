@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/yourusername/task-tracker/internal/domain"
-	"github.com/yourusername/task-tracker/internal/repository"
-	"github.com/yourusername/task-tracker/internal/service"
+	"github.com/nurlyy/task_manager/internal/domain"
+	"github.com/nurlyy/task_manager/internal/repository"
+	"github.com/nurlyy/task_manager/internal/service"
 )
 
 // ProjectHandler обрабатывает запросы, связанные с проектами
