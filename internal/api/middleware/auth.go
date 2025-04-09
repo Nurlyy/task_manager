@@ -44,7 +44,9 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 		// Проверяем валидность токена
 		claims, err := m.jwtManager.VerifyToken(tokenString)
 		if err != nil {
-			m.logger.Warn("Invalid JWT token", "error", err)
+			m.logger.Warn("Invalid JWT token", map[string]interface{}{
+				"error": err,
+			})
 			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}

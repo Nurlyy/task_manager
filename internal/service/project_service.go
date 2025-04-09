@@ -10,15 +10,16 @@ import (
 	"github.com/nurlyy/task_manager/internal/domain"
 	"github.com/nurlyy/task_manager/internal/messaging"
 	"github.com/nurlyy/task_manager/internal/repository"
+	"github.com/nurlyy/task_manager/internal/repository/cache"
 	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // Стандартные ошибки
 var (
-	ErrProjectNotFound      = errors.New("project not found")
-	ErrMemberAlreadyExists  = errors.New("member already exists in project")
-	ErrMemberNotFound       = errors.New("member not found in project")
-	ErrInsufficientRights   = errors.New("insufficient rights to perform this action")
+	ErrProjectNotFound     = errors.New("project not found")
+	ErrMemberAlreadyExists = errors.New("member already exists in project")
+	ErrMemberNotFound      = errors.New("member not found in project")
+	ErrInsufficientRights  = errors.New("insufficient rights to perform this action")
 )
 
 // ProjectService представляет бизнес-логику для работы с проектами
@@ -26,7 +27,7 @@ type ProjectService struct {
 	projectRepo repository.ProjectRepository
 	userRepo    repository.UserRepository
 	taskRepo    repository.TaskRepository
-	cacheRepo   *repository.CacheRepository
+	cacheRepo   *cache.RedisRepository
 	producer    *messaging.KafkaProducer
 	logger      logger.Logger
 }
@@ -36,7 +37,7 @@ func NewProjectService(
 	projectRepo repository.ProjectRepository,
 	userRepo repository.UserRepository,
 	taskRepo repository.TaskRepository,
-	cacheRepo *repository.CacheRepository,
+	cacheRepo *cache.RedisRepository,
 	producer *messaging.KafkaProducer,
 	logger logger.Logger,
 ) *ProjectService {
@@ -55,7 +56,9 @@ func (s *ProjectService) Create(ctx context.Context, req domain.ProjectCreateReq
 	// Получаем данные пользователя
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to get user by ID for project creation", err, "user_id", userID)
+		s.logger.Error("Failed to get user by ID for project creation", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return nil, ErrUserNotFound
 	}
 
@@ -66,7 +69,7 @@ func (s *ProjectService) Create(ctx context.Context, req domain.ProjectCreateReq
 		Name:        req.Name,
 		Description: req.Description,
 		Status:      req.Status,
-		CreatedBy:   userID,
+		CreatedBy:   user.ID,
 		StartDate:   req.StartDate,
 		EndDate:     req.EndDate,
 		CreatedAt:   now,
@@ -89,7 +92,11 @@ func (s *ProjectService) Create(ctx context.Context, req domain.ProjectCreateReq
 	}
 
 	if err := s.projectRepo.AddMember(ctx, member); err != nil {
-		s.logger.Error("Failed to add owner to project", err, "project_id", project.ID, "user_id", userID)
+		s.logger.Error("Failed to add owner to project", err, map[string]interface{}{
+			"project_id": project.ID,
+		}, map[string]interface{}{
+			"user_id": userID,
+		})
 		return nil, err
 	}
 
@@ -108,8 +115,12 @@ func (s *ProjectService) Create(ctx context.Context, req domain.ProjectCreateReq
 		Type:        messaging.EventTypeProjectCreated,
 	}
 
-	if err := s.producer.PublishProjectEvent(ctx, messaging.EventTypeProjectCreated, event); err != nil {
-		s.logger.Warn("Failed to publish project creation event", "project_id", project.ID, "error", err)
+	if err := s.producer.PublishProjectCreated(ctx, event); err != nil {
+		s.logger.Warn("Failed to publish project creation event", map[string]interface{}{
+			"project_id": project.ID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return &resp, nil
@@ -131,7 +142,9 @@ func (s *ProjectService) GetByID(ctx context.Context, id string, userID string) 
 	// Получаем проект из БД
 	project, err := s.projectRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get project by ID", err, "id", id)
+		s.logger.Error("Failed to get project by ID", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrProjectNotFound
 	}
 
@@ -143,14 +156,20 @@ func (s *ProjectService) GetByID(ctx context.Context, id string, userID string) 
 	// Получаем участников проекта
 	members, err := s.projectRepo.GetMembers(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get project members", err, "project_id", id)
+		s.logger.Error("Failed to get project members", err, map[string]interface{}{
+			"project_id": id,
+		})
 		return nil, err
 	}
 
 	// Получаем метрики проекта
 	metrics, err := s.taskRepo.GetTaskMetrics(ctx, id)
 	if err != nil {
-		s.logger.Warn("Failed to get project metrics", "project_id", id, "error", err)
+		s.logger.Warn("Failed to get project metrics", map[string]interface{}{
+			"project_id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Преобразуем участников к ProjectMemberResponse
@@ -158,7 +177,9 @@ func (s *ProjectService) GetByID(ctx context.Context, id string, userID string) 
 	for i, member := range members {
 		user, err := s.userRepo.GetByID(ctx, member.UserID)
 		if err != nil {
-			s.logger.Error("Failed to get user for project member", err, "user_id", member.UserID)
+			s.logger.Error("Failed to get user for project member", err, map[string]interface{}{
+				"user_id": member.UserID,
+			})
 			continue
 		}
 
@@ -179,7 +200,11 @@ func (s *ProjectService) GetByID(ctx context.Context, id string, userID string) 
 
 	// Сохраняем в кэш
 	if err := s.cacheRepo.Set(ctx, cacheKey, resp); err != nil {
-		s.logger.Warn("Failed to cache project", "id", id, "error", err)
+		s.logger.Warn("Failed to cache project", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return &resp, nil
@@ -190,7 +215,9 @@ func (s *ProjectService) Update(ctx context.Context, id string, req domain.Proje
 	// Получаем проект из БД
 	project, err := s.projectRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get project by ID for update", err, "id", id)
+		s.logger.Error("Failed to get project by ID for update", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrProjectNotFound
 	}
 
@@ -228,14 +255,20 @@ func (s *ProjectService) Update(ctx context.Context, id string, req domain.Proje
 
 	// Сохраняем изменения в БД
 	if err := s.projectRepo.Update(ctx, project); err != nil {
-		s.logger.Error("Failed to update project", err, "id", id)
+		s.logger.Error("Failed to update project", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, err
 	}
 
 	// Удаляем проект из кэша
 	cacheKey := "project:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete project from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete project from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Отправляем событие об обновлении проекта, если были изменения
@@ -251,8 +284,12 @@ func (s *ProjectService) Update(ctx context.Context, id string, req domain.Proje
 			Changes:     changes,
 		}
 
-		if err := s.producer.PublishProjectEvent(ctx, messaging.EventTypeProjectUpdated, event); err != nil {
-			s.logger.Warn("Failed to publish project update event", "project_id", project.ID, "error", err)
+		if err := s.producer.PublishProjectUpdated(ctx, event, changes); err != nil {
+			s.logger.Warn("Failed to publish project update event", map[string]interface{}{
+				"project_id": project.ID,
+			}, map[string]interface{}{
+				"error": err,
+			})
 		}
 	}
 
@@ -266,27 +303,39 @@ func (s *ProjectService) Delete(ctx context.Context, id string, userID string) e
 	// Проверяем, существует ли проект
 	project, err := s.projectRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get project by ID for delete", err, "id", id)
+		s.logger.Error("Failed to get project by ID for delete", err, map[string]interface{}{
+			"id": id,
+		})
 		return ErrProjectNotFound
 	}
 
 	// Проверяем, является ли пользователь владельцем проекта
 	member, err := s.projectRepo.GetMember(ctx, id, userID)
 	if err != nil || member.Role != domain.ProjectRoleOwner {
-		s.logger.Warn("User attempted to delete project without owner rights", "user_id", userID, "project_id", id)
+		s.logger.Warn("User attempted to delete project without owner rights", map[string]interface{}{
+			"user_id": userID,
+		}, map[string]interface{}{
+			"project_id": project.ID,
+		})
 		return ErrInsufficientRights
 	}
 
 	// Удаляем проект из БД
 	if err := s.projectRepo.Delete(ctx, id); err != nil {
-		s.logger.Error("Failed to delete project", err, "id", id)
+		s.logger.Error("Failed to delete project", err, map[string]interface{}{
+			"id": id,
+		})
 		return err
 	}
 
 	// Удаляем проект из кэша
 	cacheKey := "project:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete project from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete project from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return nil
@@ -338,7 +387,9 @@ func (s *ProjectService) AddMember(ctx context.Context, projectID string, req do
 	// Проверяем, существует ли проект
 	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
-		s.logger.Error("Failed to get project by ID for adding member", err, "id", projectID)
+		s.logger.Error("Failed to get project by ID for adding member", err, map[string]interface{}{
+			"id": projectID,
+		})
 		return nil, ErrProjectNotFound
 	}
 
@@ -350,7 +401,9 @@ func (s *ProjectService) AddMember(ctx context.Context, projectID string, req do
 	// Проверяем, существует ли пользователь, которого добавляем
 	newUser, err := s.userRepo.GetByID(ctx, req.UserID)
 	if err != nil {
-		s.logger.Error("Failed to get user by ID for adding to project", err, "user_id", req.UserID)
+		s.logger.Error("Failed to get user by ID for adding to project", err, map[string]interface{}{
+			"user_id": req.UserID,
+		})
 		return nil, ErrUserNotFound
 	}
 
@@ -370,14 +423,22 @@ func (s *ProjectService) AddMember(ctx context.Context, projectID string, req do
 	}
 
 	if err := s.projectRepo.AddMember(ctx, member); err != nil {
-		s.logger.Error("Failed to add member to project", err, "project_id", projectID, "user_id", req.UserID)
+		s.logger.Error("Failed to add member to project", err, map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"user_id": req.UserID,
+		})
 		return nil, err
 	}
 
 	// Удаляем проект из кэша
 	cacheKey := "project:" + projectID
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete project from cache", "id", projectID, "error", err)
+		s.logger.Warn("Failed to delete project from cache", map[string]interface{}{
+			"id": projectID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Отправляем событие о добавлении участника
@@ -391,8 +452,14 @@ func (s *ProjectService) AddMember(ctx context.Context, projectID string, req do
 		Type:        messaging.EventTypeProjectMemberAdded,
 	}
 
-	if err := s.producer.PublishProjectEvent(ctx, messaging.EventTypeProjectMemberAdded, event); err != nil {
-		s.logger.Warn("Failed to publish project member added event", "project_id", projectID, "user_id", req.UserID, "error", err)
+	if err := s.producer.PublishProjectMemberAdded(ctx, projectID, event.ProjectName, event); err != nil {
+		s.logger.Warn("Failed to publish project member added event", map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"user_id": req.UserID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Формируем ответ
@@ -406,13 +473,14 @@ func (s *ProjectService) AddMember(ctx context.Context, projectID string, req do
 	}, nil
 }
 
-
 // UpdateMember обновляет роль участника проекта
 func (s *ProjectService) UpdateMember(ctx context.Context, projectID string, memberID string, req domain.UpdateMemberRequest, userID string) (*domain.ProjectMemberResponse, error) {
 	// Проверяем, существует ли проект
 	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
-		s.logger.Error("Failed to get project by ID for updating member", err, "id", projectID)
+		s.logger.Error("Failed to get project by ID for updating member", err, map[string]interface{}{
+			"id": projectID,
+		})
 		return nil, ErrProjectNotFound
 	}
 
@@ -424,7 +492,11 @@ func (s *ProjectService) UpdateMember(ctx context.Context, projectID string, mem
 	// Проверяем, является ли пользователь участником проекта
 	member, err := s.projectRepo.GetMember(ctx, projectID, memberID)
 	if err != nil {
-		s.logger.Error("Failed to get member", err, "project_id", projectID, "user_id", memberID)
+		s.logger.Error("Failed to get member", err, map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"user_id": memberID,
+		})
 		return nil, ErrMemberNotFound
 	}
 
@@ -441,20 +513,30 @@ func (s *ProjectService) UpdateMember(ctx context.Context, projectID string, mem
 	member.Role = req.Role
 
 	if err := s.projectRepo.UpdateMember(ctx, member); err != nil {
-		s.logger.Error("Failed to update member role", err, "project_id", projectID, "user_id", memberID)
+		s.logger.Error("Failed to update member role", err, map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"user_id": memberID,
+		})
 		return nil, err
 	}
 
 	// Удаляем проект из кэша
 	cacheKey := "project:" + projectID
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete project from cache", "id", projectID, "error", err)
+		s.logger.Warn("Failed to delete project from cache", map[string]interface{}{
+			"id": projectID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Получаем данные пользователя для ответа
 	memberUser, err := s.userRepo.GetByID(ctx, memberID)
 	if err != nil {
-		s.logger.Error("Failed to get user by ID for response", err, "user_id", memberID)
+		s.logger.Error("Failed to get user by ID for response", err, map[string]interface{}{
+			"user_id": memberID,
+		})
 		return nil, ErrUserNotFound
 	}
 
@@ -470,7 +552,13 @@ func (s *ProjectService) UpdateMember(ctx context.Context, projectID string, mem
 	}
 
 	if err := s.producer.PublishProjectEvent(ctx, "project_member_updated", event); err != nil {
-		s.logger.Warn("Failed to publish project member updated event", "project_id", projectID, "user_id", memberID, "error", err)
+		s.logger.Warn("Failed to publish project member updated event", map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"user_id": memberID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Формируем ответ
@@ -489,7 +577,9 @@ func (s *ProjectService) RemoveMember(ctx context.Context, projectID string, mem
 	// Проверяем, существует ли проект
 	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
-		s.logger.Error("Failed to get project by ID for removing member", err, "id", projectID)
+		s.logger.Error("Failed to get project by ID for removing member", err, map[string]interface{}{
+			"id": projectID,
+		})
 		return ErrProjectNotFound
 	}
 
@@ -501,7 +591,11 @@ func (s *ProjectService) RemoveMember(ctx context.Context, projectID string, mem
 	// Проверяем, является ли пользователь участником проекта
 	member, err := s.projectRepo.GetMember(ctx, projectID, memberID)
 	if err != nil {
-		s.logger.Error("Failed to get member", err, "project_id", projectID, "user_id", memberID)
+		s.logger.Error("Failed to get member", err, map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"user_id": memberID,
+		})
 		return ErrMemberNotFound
 	}
 
@@ -513,14 +607,22 @@ func (s *ProjectService) RemoveMember(ctx context.Context, projectID string, mem
 
 	// Удаляем участника из проекта
 	if err := s.projectRepo.RemoveMember(ctx, projectID, memberID); err != nil {
-		s.logger.Error("Failed to remove member from project", err, "project_id", projectID, "user_id", memberID)
+		s.logger.Error("Failed to remove member from project", err, map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"user_id": memberID,
+		})
 		return err
 	}
 
 	// Удаляем проект из кэша
 	cacheKey := "project:" + projectID
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete project from cache", "id", projectID, "error", err)
+		s.logger.Warn("Failed to delete project from cache", map[string]interface{}{
+			"id": projectID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Отправляем событие об удалении участника
@@ -535,7 +637,13 @@ func (s *ProjectService) RemoveMember(ctx context.Context, projectID string, mem
 	}
 
 	if err := s.producer.PublishProjectEvent(ctx, "project_member_removed", event); err != nil {
-		s.logger.Warn("Failed to publish project member removed event", "project_id", projectID, "user_id", memberID, "error", err)
+		s.logger.Warn("Failed to publish project member removed event", map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"user_id": memberID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return nil
@@ -546,35 +654,45 @@ func (s *ProjectService) TransferOwnership(ctx context.Context, projectID string
 	// Проверяем, существует ли проект
 	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
-		s.logger.Error("Failed to get project by ID for transferring ownership", err, "id", projectID)
+		s.logger.Error("Failed to get project by ID for transferring ownership", err, map[string]interface{}{
+			"id": projectID,
+		})
 		return ErrProjectNotFound
 	}
 
 	// Проверяем, является ли текущий пользователь владельцем проекта
 	currentOwner, err := s.projectRepo.GetMember(ctx, projectID, userID)
 	if err != nil || currentOwner.Role != domain.ProjectRoleOwner {
-		s.logger.Warn("User attempted to transfer project ownership without owner rights", "user_id", userID, "project_id", projectID)
+		s.logger.Warn("User attempted to transfer project ownership without owner rights", "user_id", userID, map[string]interface{}{
+			"project_id": projectID,
+		})
 		return ErrInsufficientRights
 	}
 
 	// Проверяем, является ли новый владелец участником проекта
 	newOwner, err := s.projectRepo.GetMember(ctx, projectID, newOwnerID)
 	if err != nil {
-		s.logger.Error("Failed to get new owner as member", err, "project_id", projectID, "user_id", newOwnerID)
+		s.logger.Error("Failed to get new owner as member", err, map[string]interface{}{
+			"project_id": projectID,
+		}, "user_id", newOwnerID)
 		return ErrMemberNotFound
 	}
 
 	// Меняем роль текущего владельца на Manager
 	currentOwner.Role = domain.ProjectRoleManager
 	if err := s.projectRepo.UpdateMember(ctx, currentOwner); err != nil {
-		s.logger.Error("Failed to update current owner role", err, "project_id", projectID, "user_id", userID)
+		s.logger.Error("Failed to update current owner role", err, map[string]interface{}{
+			"project_id": projectID,
+		}, "user_id", userID)
 		return err
 	}
 
 	// Меняем роль нового владельца на Owner
 	newOwner.Role = domain.ProjectRoleOwner
 	if err := s.projectRepo.UpdateMember(ctx, newOwner); err != nil {
-		s.logger.Error("Failed to update new owner role", err, "project_id", projectID, "user_id", newOwnerID)
+		s.logger.Error("Failed to update new owner role", err, map[string]interface{}{
+			"project_id": projectID,
+		}, "user_id", newOwnerID)
 		// Если не удалось обновить нового владельца, восстанавливаем старого
 		currentOwner.Role = domain.ProjectRoleOwner
 		_ = s.projectRepo.UpdateMember(ctx, currentOwner)
@@ -584,7 +702,11 @@ func (s *ProjectService) TransferOwnership(ctx context.Context, projectID string
 	// Удаляем проект из кэша
 	cacheKey := "project:" + projectID
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete project from cache", "id", projectID, "error", err)
+		s.logger.Warn("Failed to delete project from cache", map[string]interface{}{
+			"id": projectID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Отправляем событие о передаче владения
@@ -603,13 +725,15 @@ func (s *ProjectService) TransferOwnership(ctx context.Context, projectID string
 	}
 
 	if err := s.producer.PublishProjectEvent(ctx, "project_ownership_transferred", event); err != nil {
-		s.logger.Warn("Failed to publish ownership transfer event", "project_id", projectID, "error", err)
+		s.logger.Warn("Failed to publish ownership transfer event", map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return nil
 }
-
-
 
 // Добавляем вспомогательные методы для проверки прав
 
@@ -639,7 +763,7 @@ func (s *ProjectService) canManageProject(ctx context.Context, projectID string,
 	if err != nil {
 		return false
 	}
-	
+
 	return member.Role == domain.ProjectRoleOwner || member.Role == domain.ProjectRoleManager
 }
 
@@ -647,7 +771,9 @@ func (s *ProjectService) canManageProject(ctx context.Context, projectID string,
 func (s *ProjectService) GetProjectMetrics(ctx context.Context, projectID string, userID string) (*domain.ProjectMetrics, error) {
 	// Проверяем, существует ли проект
 	if _, err := s.projectRepo.GetByID(ctx, projectID); err != nil {
-		s.logger.Error("Failed to get project by ID for metrics", err, "id", projectID)
+		s.logger.Error("Failed to get project by ID for metrics", err, map[string]interface{}{
+			"id": projectID,
+		})
 		return nil, ErrProjectNotFound
 	}
 
@@ -659,7 +785,9 @@ func (s *ProjectService) GetProjectMetrics(ctx context.Context, projectID string
 	// Получаем метрики проекта
 	metrics, err := s.taskRepo.GetTaskMetrics(ctx, projectID)
 	if err != nil {
-		s.logger.Error("Failed to get project metrics", err, "project_id", projectID)
+		s.logger.Error("Failed to get project metrics", err, map[string]interface{}{
+			"project_id": projectID,
+		})
 		return nil, err
 	}
 

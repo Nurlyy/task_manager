@@ -53,7 +53,9 @@ func (s *CommentService) Create(ctx context.Context, req domain.CommentCreateReq
 	// Проверяем, существует ли задача
 	task, err := s.taskRepo.GetByID(ctx, req.TaskID)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID for comment creation", err, "task_id", req.TaskID)
+		s.logger.Error("Failed to get task by ID for comment creation", err, map[string]interface{}{
+			"task_id": req.TaskID,
+		})
 		return nil, ErrTaskNotFound
 	}
 
@@ -82,7 +84,9 @@ func (s *CommentService) Create(ctx context.Context, req domain.CommentCreateReq
 	// Получаем данные пользователя
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to get user for comment response", err, "user_id", userID)
+		s.logger.Error("Failed to get user for comment response", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return nil, err
 	}
 
@@ -106,15 +110,20 @@ func (s *CommentService) Create(ctx context.Context, req domain.CommentCreateReq
 		Type:      messaging.EventTypeTaskCommented,
 	}
 
-	if err := s.producer.PublishCommentEvent(ctx, messaging.EventTypeTaskCommented, event); err != nil {
-		s.logger.Warn("Failed to publish comment event", "comment_id", comment.ID, "error", err)
+	if err := s.producer.PublishTaskCommented(ctx, task, event); err != nil {
+		s.logger.Warn("Failed to publish comment event", map[string]interface{}{
+			"user_id": comment.ID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Отправляем уведомление о комментарии автору и исполнителю задачи (если они не являются автором комментария)
 	s.notifyAboutComment(ctx, task, comment, userID)
 
 	// Формируем ответ
-	return &comment.ToResponse(userBrief), nil
+	resp := comment.ToResponse(userBrief)
+	return &resp, nil
 }
 
 // GetByID возвращает комментарий по ID
@@ -122,14 +131,18 @@ func (s *CommentService) GetByID(ctx context.Context, id string, userID string) 
 	// Получаем комментарий из БД
 	comment, err := s.commentRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get comment by ID", err, "id", id)
+		s.logger.Error("Failed to get comment by ID", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrCommentNotFound
 	}
 
 	// Получаем задачу для проверки доступа
 	task, err := s.taskRepo.GetByID(ctx, comment.TaskID)
 	if err != nil {
-		s.logger.Error("Failed to get task for comment access check", err, "task_id", comment.TaskID)
+		s.logger.Error("Failed to get task for comment access check", err, map[string]interface{}{
+			"task_id": comment.TaskID,
+		})
 		return nil, ErrTaskNotFound
 	}
 
@@ -141,7 +154,9 @@ func (s *CommentService) GetByID(ctx context.Context, id string, userID string) 
 	// Получаем данные пользователя-автора комментария
 	user, err := s.userRepo.GetByID(ctx, comment.UserID)
 	if err != nil {
-		s.logger.Error("Failed to get comment author", err, "user_id", comment.UserID)
+		s.logger.Error("Failed to get comment author", err, map[string]interface{}{
+			"user_id": comment.UserID,
+		})
 		return nil, err
 	}
 
@@ -155,7 +170,8 @@ func (s *CommentService) GetByID(ctx context.Context, id string, userID string) 
 	}
 
 	// Формируем ответ
-	return &comment.ToResponse(userBrief), nil
+	resp := comment.ToResponse(userBrief)
+	return &resp, nil
 }
 
 // Update обновляет комментарий
@@ -163,7 +179,9 @@ func (s *CommentService) Update(ctx context.Context, id string, req domain.Comme
 	// Получаем комментарий из БД
 	comment, err := s.commentRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get comment by ID for update", err, "id", id)
+		s.logger.Error("Failed to get comment by ID for update", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrCommentNotFound
 	}
 
@@ -172,7 +190,11 @@ func (s *CommentService) Update(ctx context.Context, id string, req domain.Comme
 		// Проверяем, является ли пользователь администратором
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil || user.Role != domain.UserRoleAdmin {
-			s.logger.Warn("User attempted to update another user's comment", "user_id", userID, "comment_id", id)
+			s.logger.Warn("User attempted to update another user's comment", map[string]interface{}{
+				"user_id": userID,
+			}, map[string]interface{}{
+				"comment_id": id,
+			})
 			return nil, ErrInsufficientRights
 		}
 	}
@@ -183,14 +205,18 @@ func (s *CommentService) Update(ctx context.Context, id string, req domain.Comme
 
 	// Сохраняем изменения в БД
 	if err := s.commentRepo.Update(ctx, comment); err != nil {
-		s.logger.Error("Failed to update comment", err, "id", id)
+		s.logger.Error("Failed to update comment", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, err
 	}
 
 	// Получаем данные пользователя-автора комментария
 	user, err := s.userRepo.GetByID(ctx, comment.UserID)
 	if err != nil {
-		s.logger.Error("Failed to get comment author", err, "user_id", comment.UserID)
+		s.logger.Error("Failed to get comment author", err, map[string]interface{}{
+			"user_id": comment.UserID,
+		})
 		return nil, err
 	}
 
@@ -204,7 +230,8 @@ func (s *CommentService) Update(ctx context.Context, id string, req domain.Comme
 	}
 
 	// Формируем ответ
-	return &comment.ToResponse(userBrief), nil
+	resp := comment.ToResponse(userBrief)
+	return &resp, nil
 }
 
 // Delete удаляет комментарий
@@ -212,7 +239,9 @@ func (s *CommentService) Delete(ctx context.Context, id string, userID string) e
 	// Получаем комментарий из БД
 	comment, err := s.commentRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get comment by ID for delete", err, "id", id)
+		s.logger.Error("Failed to get comment by ID for delete", err, map[string]interface{}{
+			"id": id,
+		})
 		return ErrCommentNotFound
 	}
 
@@ -221,14 +250,20 @@ func (s *CommentService) Delete(ctx context.Context, id string, userID string) e
 		// Проверяем, является ли пользователь администратором
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil || user.Role != domain.UserRoleAdmin {
-			s.logger.Warn("User attempted to delete another user's comment", "user_id", userID, "comment_id", id)
+			s.logger.Warn("User attempted to delete another user's comment", map[string]interface{}{
+				"user_id": userID,
+			}, map[string]interface{}{
+				"comment_id": id,
+			})
 			return ErrInsufficientRights
 		}
 	}
 
 	// Удаляем комментарий из БД
 	if err := s.commentRepo.Delete(ctx, id); err != nil {
-		s.logger.Error("Failed to delete comment", err, "id", id)
+		s.logger.Error("Failed to delete comment", err, map[string]interface{}{
+			"id": id,
+		})
 		return err
 	}
 
@@ -240,7 +275,9 @@ func (s *CommentService) GetCommentsByTask(ctx context.Context, taskID string, u
 	// Проверяем, существует ли задача
 	task, err := s.taskRepo.GetByID(ctx, taskID)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID for comments", err, "task_id", taskID)
+		s.logger.Error("Failed to get task by ID for comments", err, map[string]interface{}{
+			"task_id": taskID,
+		})
 		return nil, ErrTaskNotFound
 	}
 
@@ -251,8 +288,8 @@ func (s *CommentService) GetCommentsByTask(ctx context.Context, taskID string, u
 
 	// Настраиваем фильтр
 	filter := repository.CommentFilter{
-		TaskIDs: []string{taskID},
-		OrderBy: func() *string { s := "created_at"; return &s }(),
+		TaskIDs:  []string{taskID},
+		OrderBy:  func() *string { s := "created_at"; return &s }(),
 		OrderDir: func() *string { s := "desc"; return &s }(),
 		Limit:    pageSize,
 		Offset:   (page - 1) * pageSize,
@@ -261,14 +298,18 @@ func (s *CommentService) GetCommentsByTask(ctx context.Context, taskID string, u
 	// Получаем комментарии к задаче
 	comments, err := s.commentRepo.List(ctx, filter)
 	if err != nil {
-		s.logger.Error("Failed to get comments by task", err, "task_id", taskID)
+		s.logger.Error("Failed to get comments by task", err, map[string]interface{}{
+			"task_id": taskID,
+		})
 		return nil, err
 	}
 
 	// Получаем общее количество комментариев
 	total, err := s.commentRepo.CountCommentsByTask(ctx, taskID)
 	if err != nil {
-		s.logger.Error("Failed to count comments by task", err, "task_id", taskID)
+		s.logger.Error("Failed to count comments by task", err, map[string]interface{}{
+			"task_id": taskID,
+		})
 		return nil, err
 	}
 
@@ -278,7 +319,9 @@ func (s *CommentService) GetCommentsByTask(ctx context.Context, taskID string, u
 		// Получаем данные пользователя-автора комментария
 		user, err := s.userRepo.GetByID(ctx, comment.UserID)
 		if err != nil {
-			s.logger.Error("Failed to get comment author", err, "user_id", comment.UserID)
+			s.logger.Error("Failed to get comment author", err, map[string]interface{}{
+				"user_id": comment.UserID,
+			})
 			continue
 		}
 
@@ -308,30 +351,32 @@ func (s *CommentService) GetCommentsByTask(ctx context.Context, taskID string, u
 func (s *CommentService) notifyAboutComment(ctx context.Context, task *domain.Task, comment *domain.Comment, userID string) {
 	// Формируем список получателей уведомления
 	recipients := make([]string, 0, 2)
-	
+
 	// Добавляем автора задачи, если он не является автором комментария
 	if task.CreatedBy != userID {
 		recipients = append(recipients, task.CreatedBy)
 	}
-	
+
 	// Добавляем исполнителя задачи, если он не является автором комментария
 	// и не является автором задачи (чтобы избежать дублирования)
 	if task.AssigneeID != nil && *task.AssigneeID != userID && *task.AssigneeID != task.CreatedBy {
 		recipients = append(recipients, *task.AssigneeID)
 	}
-	
+
 	// Если нет получателей, выходим
 	if len(recipients) == 0 {
 		return
 	}
-	
+
 	// Получаем данные пользователя-автора комментария
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to get comment author for notification", err, "user_id", userID)
+		s.logger.Error("Failed to get comment author for notification", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return
 	}
-	
+
 	// Создаем событие для отправки уведомления
 	notificationEvent := &messaging.NotificationEvent{
 		UserIDs:    recipients,
@@ -342,16 +387,18 @@ func (s *CommentService) notifyAboutComment(ctx context.Context, task *domain.Ta
 		EntityType: "comment",
 		CreatedAt:  time.Now(),
 		MetaData: map[string]string{
-			"task_id":     task.ID,
-			"task_title":  task.Title,
-			"comment_id":  comment.ID,
-			"user_id":     userID,
-			"user_name":   user.FullName(),
-			"project_id":  task.ProjectID,
+			"task_id":    task.ID,
+			"task_title": task.Title,
+			"comment_id": comment.ID,
+			"user_id":    userID,
+			"user_name":  user.FullName(),
+			"project_id": task.ProjectID,
 		},
 	}
-	
-	if err := s.producer.PublishNotificationEvent(ctx, messaging.EventTypeNotification, notificationEvent); err != nil {
-		s.logger.Error("Failed to publish notification event", err, "comment_id", comment.ID)
+
+	if err := s.producer.PublishNotification(ctx, notificationEvent); err != nil {
+		s.logger.Error("Failed to publish notification event", err, map[string]interface{}{
+			"comment_id": comment.ID,
+		})
 	}
 }

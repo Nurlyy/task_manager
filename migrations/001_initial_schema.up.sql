@@ -293,3 +293,26 @@ INSERT INTO users (
     NOW(),
     NOW()
 );
+
+
+-- Создание таблицы для связи пользователей с Telegram
+CREATE TABLE user_telegram_links (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    telegram_id VARCHAR(100) NOT NULL UNIQUE,
+    chat_id VARCHAR(100) NOT NULL,
+    username VARCHAR(255),
+    first_name VARCHAR(255),
+    last_name VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id)
+);
+
+-- Индекс для поиска по telegram_id
+CREATE INDEX idx_user_telegram_links_telegram_id ON user_telegram_links (telegram_id);
+
+-- Триггер для обновления поля updated_at
+CREATE TRIGGER update_user_telegram_links_updated_at
+BEFORE UPDATE ON user_telegram_links
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();

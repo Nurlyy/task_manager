@@ -282,7 +282,7 @@ func (r *NotificationRepository) Delete(ctx context.Context, id string) error {
 func (r *NotificationRepository) GetUserNotifications(ctx context.Context, userID string, filter repository.NotificationFilter) ([]*domain.Notification, error) {
 	// Создаем копию фильтра и добавляем ID пользователя
 	userFilter := filter
-	userIDForFilter := userID
+	// userIDForFilter := userID
 	userFilter.IDs = nil
 	userFilter.EntityID = nil
 	userFilter.EntityType = nil

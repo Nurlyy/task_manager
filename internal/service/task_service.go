@@ -11,6 +11,7 @@ import (
 	"github.com/nurlyy/task_manager/internal/messaging"
 	"github.com/nurlyy/task_manager/internal/repository"
 	"github.com/nurlyy/task_manager/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/repository/cache"
 )
 
 // Стандартные ошибки
@@ -26,7 +27,7 @@ type TaskService struct {
 	projectRepo  repository.ProjectRepository
 	userRepo     repository.UserRepository
 	commentRepo  repository.CommentRepository
-	cacheRepo    *repository.CacheRepository
+	cacheRepo *cache.RedisRepository
 	producer     *messaging.KafkaProducer
 	projectSvc   *ProjectService
 	logger       logger.Logger
@@ -38,7 +39,7 @@ func NewTaskService(
 	projectRepo repository.ProjectRepository,
 	userRepo repository.UserRepository,
 	commentRepo repository.CommentRepository,
-	cacheRepo *repository.CacheRepository,
+	cacheRepo *cache.RedisRepository,
 	producer *messaging.KafkaProducer,
 	projectSvc *ProjectService,
 	logger logger.Logger,
@@ -160,7 +161,7 @@ func (s *TaskService) GetByID(ctx context.Context, id string, userID string) (*d
 		// Проверяем доступ пользователя к задаче
 		if s.hasAccessToTask(ctx, taskResp.ProjectID, userID) {
 			return &taskResp, nil
-		}Create
+		}
 		return nil, ErrTaskAccessDenied
 	}
 
@@ -430,7 +431,7 @@ func (s *TaskService) Update(ctx context.Context, id string, req domain.TaskUpda
 	}
 
 	return &resp, nil
-
+}
 
 // Вспомогательные методы
 

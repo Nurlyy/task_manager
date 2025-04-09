@@ -9,11 +9,19 @@ import (
 	"github.com/segmentio/kafka-go"
 	"github.com/nurlyy/task_manager/pkg/logger"
 )
-
 // KafkaConsumer реализует интерфейс потребителя для получения сообщений из Kafka
 type KafkaConsumer struct {
-	reader  *kafka.Reader
-	logger  logger.Logger
+	reader *kafka.Reader
+	logger logger.Logger
+}
+
+// wrapLogger implements kafka.Logger by wrapping your custom logger
+type wrapLogger struct {
+	log logger.Logger
+}
+
+func (l wrapLogger) Printf(msg string, args ...interface{}) {
+	l.log.Debug(fmt.Sprintf(msg, args...))
 }
 
 // NewKafkaConsumer создает новый экземпляр KafkaConsumer
@@ -27,8 +35,8 @@ func NewKafkaConsumer(brokers []string, topic, groupID string, logger logger.Log
 		MaxWait:        1 * time.Second,
 		StartOffset:    kafka.FirstOffset,
 		CommitInterval: 1 * time.Second,
-		RetentionTime:  7 * 24 * time.Hour, // 1 week
-		Logger:         kafka.LoggerFunc(logger.Debug),
+		RetentionTime:  7 * 24 * time.Hour,
+		Logger:         wrapLogger{log: logger}, // inject logger wrapper
 	})
 
 	return &KafkaConsumer{

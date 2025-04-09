@@ -9,6 +9,7 @@ import (
 
 	"github.com/nurlyy/task_manager/internal/domain"
 	"github.com/nurlyy/task_manager/internal/repository"
+	"github.com/nurlyy/task_manager/internal/repository/cache"
 	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
@@ -21,7 +22,7 @@ var (
 type NotificationService struct {
 	repo      repository.NotificationRepository
 	userRepo  repository.UserRepository
-	cacheRepo *repository.CacheRepository
+	cacheRepo *cache.RedisRepository
 	logger    logger.Logger
 }
 
@@ -29,7 +30,7 @@ type NotificationService struct {
 func NewNotificationService(
 	repo repository.NotificationRepository,
 	userRepo repository.UserRepository,
-	cacheRepo *repository.CacheRepository,
+	cacheRepo *cache.RedisRepository,
 	logger logger.Logger,
 ) *NotificationService {
 	return &NotificationService{
@@ -44,7 +45,9 @@ func NewNotificationService(
 func (s *NotificationService) Create(ctx context.Context, req domain.NotificationCreateRequest) (*domain.NotificationResponse, error) {
 	// Проверяем, существует ли пользователь
 	if _, err := s.userRepo.GetByID(ctx, req.UserID); err != nil {
-		s.logger.Error("Failed to get user by ID for notification creation", err, "user_id", req.UserID)
+		s.logger.Error("Failed to get user by ID for notification creation", err, map[string]interface{}{
+			"user_id": req.UserID,
+		})
 		return nil, ErrUserNotFound
 	}
 
@@ -71,10 +74,15 @@ func (s *NotificationService) Create(ctx context.Context, req domain.Notificatio
 	// Удаляем счетчик непрочитанных уведомлений из кэша
 	cacheKey := "unread_count:" + req.UserID
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete unread count from cache", "user_id", req.UserID, "error", err)
+		s.logger.Warn("Failed to delete unread count from cache", map[string]interface{}{
+			"user_id": req.UserID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
-	return &notification.ToResponse(), nil
+	resp := notification.ToResponse()
+	return &resp, nil
 }
 
 // CreateBatch создает несколько уведомлений за один раз
@@ -114,7 +122,11 @@ func (s *NotificationService) CreateBatch(ctx context.Context, requests []domain
 	for userID := range userIDs {
 		cacheKey := "unread_count:" + userID
 		if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-			s.logger.Warn("Failed to delete unread count from cache", "user_id", userID, "error", err)
+			s.logger.Warn("Failed to delete unread count from cache", map[string]interface{}{
+				"user_id": userID,
+			}, map[string]interface{}{
+				"error": err,
+			})
 		}
 	}
 
@@ -126,7 +138,9 @@ func (s *NotificationService) GetByID(ctx context.Context, id string, userID str
 	// Получаем уведомление из БД
 	notification, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get notification by ID", err, "id", id)
+		s.logger.Error("Failed to get notification by ID", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrNotificationNotFound
 	}
 
@@ -135,7 +149,8 @@ func (s *NotificationService) GetByID(ctx context.Context, id string, userID str
 		return nil, ErrNotificationNotFound
 	}
 
-	return &notification.ToResponse(), nil
+	resp := notification.ToResponse()
+	return &resp, nil
 }
 
 // MarkAsRead отмечает уведомление как прочитанное
@@ -143,7 +158,9 @@ func (s *NotificationService) MarkAsRead(ctx context.Context, id string, userID 
 	// Получаем уведомление из БД
 	notification, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get notification by ID for marking as read", err, "id", id)
+		s.logger.Error("Failed to get notification by ID for marking as read", err, map[string]interface{}{
+			"id": id,
+		})
 		return ErrNotificationNotFound
 	}
 
@@ -159,14 +176,20 @@ func (s *NotificationService) MarkAsRead(ctx context.Context, id string, userID 
 
 	// Отмечаем уведомление как прочитанное
 	if err := s.repo.MarkAsRead(ctx, id); err != nil {
-		s.logger.Error("Failed to mark notification as read", err, "id", id)
+		s.logger.Error("Failed to mark notification as read", err, map[string]interface{}{
+			"id": id,
+		})
 		return err
 	}
 
 	// Удаляем счетчик непрочитанных уведомлений из кэша
 	cacheKey := "unread_count:" + userID
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete unread count from cache", "user_id", userID, "error", err)
+		s.logger.Warn("Failed to delete unread count from cache", map[string]interface{}{
+			"user_id": userID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return nil
@@ -176,14 +199,20 @@ func (s *NotificationService) MarkAsRead(ctx context.Context, id string, userID 
 func (s *NotificationService) MarkAllAsRead(ctx context.Context, userID string) error {
 	// Отмечаем все уведомления пользователя как прочитанные
 	if err := s.repo.MarkAllAsRead(ctx, userID); err != nil {
-		s.logger.Error("Failed to mark all notifications as read", err, "user_id", userID)
+		s.logger.Error("Failed to mark all notifications as read", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return err
 	}
 
 	// Удаляем счетчик непрочитанных уведомлений из кэша
 	cacheKey := "unread_count:" + userID
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete unread count from cache", "user_id", userID, "error", err)
+		s.logger.Warn("Failed to delete unread count from cache", map[string]interface{}{
+			"user_id": userID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return nil
@@ -194,7 +223,9 @@ func (s *NotificationService) Delete(ctx context.Context, id string, userID stri
 	// Получаем уведомление из БД
 	notification, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get notification by ID for delete", err, "id", id)
+		s.logger.Error("Failed to get notification by ID for delete", err, map[string]interface{}{
+			"id": id,
+		})
 		return ErrNotificationNotFound
 	}
 
@@ -205,7 +236,9 @@ func (s *NotificationService) Delete(ctx context.Context, id string, userID stri
 
 	// Удаляем уведомление из БД
 	if err := s.repo.Delete(ctx, id); err != nil {
-		s.logger.Error("Failed to delete notification", err, "id", id)
+		s.logger.Error("Failed to delete notification", err, map[string]interface{}{
+			"id": id,
+		})
 		return err
 	}
 
@@ -213,7 +246,11 @@ func (s *NotificationService) Delete(ctx context.Context, id string, userID stri
 	if !notification.IsRead() {
 		cacheKey := "unread_count:" + userID
 		if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-			s.logger.Warn("Failed to delete unread count from cache", "user_id", userID, "error", err)
+			s.logger.Warn("Failed to delete unread count from cache", map[string]interface{}{
+				"user_id": userID,
+			}, map[string]interface{}{
+				"error": err,
+			})
 		}
 	}
 
@@ -248,14 +285,18 @@ func (s *NotificationService) GetUserNotifications(ctx context.Context, userID s
 	// Получаем уведомления пользователя
 	notifications, err := s.repo.GetUserNotifications(ctx, userID, repoFilter)
 	if err != nil {
-		s.logger.Error("Failed to get user notifications", err, "user_id", userID)
+		s.logger.Error("Failed to get user notifications", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return nil, err
 	}
 
 	// Получаем общее количество уведомлений
 	total, err := s.repo.CountUserNotifications(ctx, userID, repoFilter)
 	if err != nil {
-		s.logger.Error("Failed to count user notifications", err, "user_id", userID)
+		s.logger.Error("Failed to count user notifications", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return nil, err
 	}
 
@@ -287,13 +328,19 @@ func (s *NotificationService) GetUnreadCount(ctx context.Context, userID string)
 	// Получаем количество непрочитанных уведомлений
 	count, err := s.repo.GetUserUnreadCount(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to get unread notification count", err, "user_id", userID)
+		s.logger.Error("Failed to get unread notification count", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return 0, err
 	}
 
 	// Сохраняем в кэш
 	if err := s.cacheRepo.Set(ctx, cacheKey, count); err != nil {
-		s.logger.Warn("Failed to cache unread count", "user_id", userID, "error", err)
+		s.logger.Warn("Failed to cache unread count", map[string]interface{}{
+			"user_id": userID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return count, nil
@@ -304,7 +351,9 @@ func (s *NotificationService) GetUserNotificationSettings(ctx context.Context, u
 	// Получаем настройки уведомлений пользователя
 	settings, err := s.repo.GetUserNotificationSettings(ctx, userID)
 	if err != nil {
-		s.logger.Error("Failed to get user notification settings", err, "user_id", userID)
+		s.logger.Error("Failed to get user notification settings", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return nil, err
 	}
 
@@ -322,7 +371,9 @@ func (s *NotificationService) UpdateUserNotificationSettings(ctx context.Context
 
 	// Обновляем настройки уведомлений
 	if err := s.repo.UpdateUserNotificationSettings(ctx, userID, settings); err != nil {
-		s.logger.Error("Failed to update user notification settings", err, "user_id", userID)
+		s.logger.Error("Failed to update user notification settings", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return err
 	}
 

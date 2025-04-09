@@ -1,4 +1,4 @@
-package cache
+package messaging
 
 import (
 	"context"
@@ -6,313 +6,200 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/nurlyy/task_manager/internal/domain"
 	"github.com/nurlyy/task_manager/pkg/logger"
+	"github.com/segmentio/kafka-go"
 )
 
-// Префиксы ключей для разных типов данных
-const (
-	keyPrefixUser             = "user:"
-	keyPrefixTask             = "task:"
-	keyPrefixProject          = "project:"
-	keyPrefixProjectMembers   = "project:members:"
-	keyPrefixTaskList         = "task:list:"
-	keyPrefixProjectList      = "project:list:"
-	keyPrefixUserTasks        = "user:tasks:"
-	keyPrefixUserProjects     = "user:projects:"
-	keyPrefixTaskComments     = "task:comments:"
-	keyPrefixNotifications    = "notifications:"
-	keyPrefixUnreadCount      = "unread:count:"
-	keyPrefixLock             = "lock:"
-)
-
-// RedisRepository реализует репозиторий кэширования с использованием Redis
-type RedisRepository struct {
-	client *redis.Client
+// KafkaProducer реализует интерфейс продюсера для отправки сообщений в Kafka
+type KafkaProducer struct {
+	writer *kafka.Writer
+	topics map[string]string
 	logger logger.Logger
-	ttl    time.Duration
 }
 
-// NewRedisRepository создает новый экземпляр RedisRepository
-func NewRedisRepository(client *redis.Client, logger logger.Logger, ttl time.Duration) *RedisRepository {
-	return &RedisRepository{
-		client: client,
+// NewKafkaProducer создает новый экземпляр KafkaProducer
+func NewKafkaProducer(brokers []string, topics map[string]string, logger logger.Logger) *KafkaProducer {
+	writer := &kafka.Writer{
+		Addr:         kafka.TCP(brokers...),
+		Balancer:     &kafka.LeastBytes{},
+		RequiredAcks: kafka.RequireAll,
+		MaxAttempts:  5,
+		BatchSize:    100,
+		BatchTimeout: 10 * time.Millisecond,
+		Logger:       wrapLogger{log: logger}, // inject logger wrapper
+	}
+
+	return &KafkaProducer{
+		writer: writer,
+		topics: topics,
 		logger: logger,
-		ttl:    ttl,
 	}
 }
 
-// CacheUser сохраняет пользователя в кэш
-func (r *RedisRepository) CacheUser(ctx context.Context, user *domain.User) error {
-	key := fmt.Sprintf("%s%s", keyPrefixUser, user.ID)
-	return r.cacheValue(ctx, key, user)
+// Close закрывает соединение с Kafka
+func (p *KafkaProducer) Close() error {
+	p.logger.Info("Closing Kafka producer")
+	return p.writer.Close()
 }
 
-// GetUser получает пользователя из кэша
-func (r *RedisRepository) GetUser(ctx context.Context, id string) (*domain.User, error) {
-	key := fmt.Sprintf("%s%s", keyPrefixUser, id)
-	var user domain.User
-	if err := r.getValue(ctx, key, &user); err != nil {
-		return nil, err
+// PublishTaskCreated публикует событие о создании задачи
+func (p *KafkaProducer) PublishTaskCreated(ctx context.Context, task *domain.Task) error {
+	event := TaskEvent{
+		ID:          task.ID,
+		Title:       task.Title,
+		Description: task.Description,
+		ProjectID:   task.ProjectID,
+		Status:      string(task.Status),
+		Priority:    string(task.Priority),
+		AssigneeID:  task.AssigneeID,
+		CreatedBy:   task.CreatedBy,
+		DueDate:     task.DueDate,
+		CreatedAt:   task.CreatedAt,
+		UpdatedAt:   task.UpdatedAt,
+		Type:        EventTypeTaskCreated,
 	}
-	return &user, nil
+
+	return p.publishEvent(ctx, p.topics["task_created"], task.ID, event)
 }
 
-// InvalidateUser удаляет пользователя из кэша
-func (r *RedisRepository) InvalidateUser(ctx context.Context, id string) error {
-	key := fmt.Sprintf("%s%s", keyPrefixUser, id)
-	return r.deleteValue(ctx, key)
-}
-
-// CacheTask сохраняет задачу в кэш
-func (r *RedisRepository) CacheTask(ctx context.Context, task *domain.Task) error {
-	key := fmt.Sprintf("%s%s", keyPrefixTask, task.ID)
-	return r.cacheValue(ctx, key, task)
-}
-
-// GetTask получает задачу из кэша
-func (r *RedisRepository) GetTask(ctx context.Context, id string) (*domain.Task, error) {
-	key := fmt.Sprintf("%s%s", keyPrefixTask, id)
-	var task domain.Task
-	if err := r.getValue(ctx, key, &task); err != nil {
-		return nil, err
+// PublishTaskUpdated публикует событие об обновлении задачи
+func (p *KafkaProducer) PublishTaskUpdated(ctx context.Context, task *domain.Task, changes map[string]interface{}) error {
+	event := TaskEvent{
+		ID:         task.ID,
+		Title:      task.Title,
+		ProjectID:  task.ProjectID,
+		Status:     string(task.Status),
+		Priority:   string(task.Priority),
+		AssigneeID: task.AssigneeID,
+		UpdatedAt:  task.UpdatedAt,
+		Type:       EventTypeTaskUpdated,
+		Changes:    changes,
 	}
-	return &task, nil
+
+	return p.publishEvent(ctx, p.topics["task_updated"], task.ID, event)
 }
 
-// InvalidateTask удаляет задачу из кэша
-func (r *RedisRepository) InvalidateTask(ctx context.Context, id string) error {
-	key := fmt.Sprintf("%s%s", keyPrefixTask, id)
-	return r.deleteValue(ctx, key)
-}
-
-// CacheProject сохраняет проект в кэш
-func (r *RedisRepository) CacheProject(ctx context.Context, project *domain.Project) error {
-	key := fmt.Sprintf("%s%s", keyPrefixProject, project.ID)
-	return r.cacheValue(ctx, key, project)
-}
-
-// GetProject получает проект из кэша
-func (r *RedisRepository) GetProject(ctx context.Context, id string) (*domain.Project, error) {
-	key := fmt.Sprintf("%s%s", keyPrefixProject, id)
-	var project domain.Project
-	if err := r.getValue(ctx, key, &project); err != nil {
-		return nil, err
+// PublishTaskAssigned публикует событие о назначении задачи
+func (p *KafkaProducer) PublishTaskAssigned(ctx context.Context, task *domain.Task, assignerID string) error {
+	event := TaskEvent{
+		ID:         task.ID,
+		Title:      task.Title,
+		ProjectID:  task.ProjectID,
+		Status:     string(task.Status),
+		Priority:   string(task.Priority),
+		AssigneeID: task.AssigneeID,
+		UpdatedAt:  task.UpdatedAt,
+		Type:       EventTypeTaskAssigned,
+		AssignerID: assignerID,
 	}
-	return &project, nil
+
+	return p.publishEvent(ctx, p.topics["task_assigned"], task.ID, event)
 }
 
-// InvalidateProject удаляет проект из кэша
-func (r *RedisRepository) InvalidateProject(ctx context.Context, id string) error {
-	key := fmt.Sprintf("%s%s", keyPrefixProject, id)
-	return r.deleteValue(ctx, key)
-}
-
-// CacheProjectMembers сохраняет участников проекта в кэш
-func (r *RedisRepository) CacheProjectMembers(ctx context.Context, projectID string, members []*domain.ProjectMember) error {
-	key := fmt.Sprintf("%s%s", keyPrefixProjectMembers, projectID)
-	return r.cacheValue(ctx, key, members)
-}
-
-// GetProjectMembers получает участников проекта из кэша
-func (r *RedisRepository) GetProjectMembers(ctx context.Context, projectID string) ([]*domain.ProjectMember, error) {
-	key := fmt.Sprintf("%s%s", keyPrefixProjectMembers, projectID)
-	var members []*domain.ProjectMember
-	if err := r.getValue(ctx, key, &members); err != nil {
-		return nil, err
+// PublishTaskCommented публикует событие о комментировании задачи
+func (p *KafkaProducer) PublishTaskCommented(ctx context.Context, task *domain.Task, comment *CommentEvent) error {
+	event := CommentEvent{
+		TaskID:    task.ID,
+		TaskTitle: task.Title,
+		CommentID: comment.CommentID,
+		UserID:    comment.UserID,
+		Content:   comment.Content,
+		CreatedAt: comment.CreatedAt,
+		Type:      EventTypeTaskCommented,
 	}
-	return members, nil
+
+	return p.publishEvent(ctx, p.topics["task_commented"], comment.CommentID, event)
 }
 
-// InvalidateProjectMembers удаляет участников проекта из кэша
-func (r *RedisRepository) InvalidateProjectMembers(ctx context.Context, projectID string) error {
-	key := fmt.Sprintf("%s%s", keyPrefixProjectMembers, projectID)
-	return r.deleteValue(ctx, key)
-}
-
-// CacheTaskList сохраняет список задач в кэш
-func (r *RedisRepository) CacheTaskList(ctx context.Context, filter string, tasks []*domain.Task) error {
-	key := fmt.Sprintf("%s%s", keyPrefixTaskList, filter)
-	return r.cacheValue(ctx, key, tasks)
-}
-
-// GetTaskList получает список задач из кэша
-func (r *RedisRepository) GetTaskList(ctx context.Context, filter string) ([]*domain.Task, error) {
-	key := fmt.Sprintf("%s%s", keyPrefixTaskList, filter)
-	var tasks []*domain.Task
-	if err := r.getValue(ctx, key, &tasks); err != nil {
-		return nil, err
+// PublishProjectCreated публикует событие о создании проекта
+func (p *KafkaProducer) PublishProjectCreated(ctx context.Context, project *ProjectEvent) error {
+	event := ProjectEvent{
+		ID:          project.ID,
+		Name:        project.Name,
+		Description: project.Description,
+		Status:      string(project.Status),
+		CreatedBy:   project.CreatedBy,
+		CreatedAt:   project.CreatedAt,
+		UpdatedAt:   project.UpdatedAt,
+		Type:        EventTypeProjectCreated,
 	}
-	return tasks, nil
+
+	return p.publishEvent(ctx, p.topics["project_created"], project.ID, event)
 }
 
-// InvalidateTaskList удаляет список задач из кэша
-func (r *RedisRepository) InvalidateTaskList(ctx context.Context, filter string) error {
-	key := fmt.Sprintf("%s%s", keyPrefixTaskList, filter)
-	return r.deleteValue(ctx, key)
-}
-
-// CacheProjectList сохраняет список проектов в кэш
-func (r *RedisRepository) CacheProjectList(ctx context.Context, filter string, projects []*domain.Project) error {
-	key := fmt.Sprintf("%s%s", keyPrefixProjectList, filter)
-	return r.cacheValue(ctx, key, projects)
-}
-
-// GetProjectList получает список проектов из кэша
-func (r *RedisRepository) GetProjectList(ctx context.Context, filter string) ([]*domain.Project, error) {
-	key := fmt.Sprintf("%s%s", keyPrefixProjectList, filter)
-	var projects []*domain.Project
-	if err := r.getValue(ctx, key, &projects); err != nil {
-		return nil, err
+// PublishProjectUpdated публикует событие об обновлении проекта
+func (p *KafkaProducer) PublishProjectUpdated(ctx context.Context, project *ProjectEvent, changes map[string]interface{}) error {
+	event := ProjectEvent{
+		ID:        project.ID,
+		Name:      project.Name,
+		Status:    string(project.Status),
+		UpdatedAt: project.UpdatedAt,
+		Type:      EventTypeProjectUpdated,
+		Changes:   changes,
 	}
-	return projects, nil
+
+	return p.publishEvent(ctx, p.topics["project_updated"], project.ID, event)
 }
 
-// InvalidateProjectList удаляет список проектов из кэша
-func (r *RedisRepository) InvalidateProjectList(ctx context.Context, filter string) error {
-	key := fmt.Sprintf("%s%s", keyPrefixProjectList, filter)
-	return r.deleteValue(ctx, key)
-}
-
-// CacheNotifications сохраняет уведомления пользователя в кэш
-func (r *RedisRepository) CacheNotifications(ctx context.Context, userID string, notifications []*domain.Notification) error {
-	key := fmt.Sprintf("%s%s", keyPrefixNotifications, userID)
-	return r.cacheValue(ctx, key, notifications)
-}
-
-// GetNotifications получает уведомления пользователя из кэша
-func (r *RedisRepository) GetNotifications(ctx context.Context, userID string) ([]*domain.Notification, error) {
-	key := fmt.Sprintf("%s%s", keyPrefixNotifications, userID)
-	var notifications []*domain.Notification
-	if err := r.getValue(ctx, key, &notifications); err != nil {
-		return nil, err
+// PublishProjectMemberAdded публикует событие о добавлении участника в проект
+func (p *KafkaProducer) PublishProjectMemberAdded(ctx context.Context, projectID, projectName string, member *ProjectMemberEvent) error {
+	event := ProjectMemberEvent{
+		ProjectID:   projectID,
+		ProjectName: projectName,
+		UserID:      member.UserID,
+		Role:        string(member.Role),
+		InvitedBy:   member.InvitedBy,
+		JoinedAt:    member.JoinedAt,
+		Type:        EventTypeProjectMemberAdded,
 	}
-	return notifications, nil
+
+	return p.publishEvent(ctx, p.topics["project_member_added"], fmt.Sprintf("%s-%s", projectID, member.UserID), event)
 }
 
-// InvalidateNotifications удаляет уведомления пользователя из кэша
-func (r *RedisRepository) InvalidateNotifications(ctx context.Context, userID string) error {
-	key := fmt.Sprintf("%s%s", keyPrefixNotifications, userID)
-	return r.deleteValue(ctx, key)
+// PublishNotification публикует уведомление
+func (p *KafkaProducer) PublishNotification(ctx context.Context, notification *NotificationEvent) error {
+	return p.publishEvent(ctx, p.topics["notifications"], notification.EntityID, notification)
 }
 
-// CacheUnreadCount сохраняет количество непрочитанных уведомлений пользователя
-func (r *RedisRepository) CacheUnreadCount(ctx context.Context, userID string, count int) error {
-	key := fmt.Sprintf("%s%s", keyPrefixUnreadCount, userID)
-	return r.client.Set(ctx, key, count, r.ttl).Err()
-}
+// Вспомогательный метод для публикации событий
 
-// GetUnreadCount получает количество непрочитанных уведомлений пользователя
-func (r *RedisRepository) GetUnreadCount(ctx context.Context, userID string) (int, error) {
-	key := fmt.Sprintf("%s%s", keyPrefixUnreadCount, userID)
-	val, err := r.client.Get(ctx, key).Int()
-	if err == redis.Nil {
-		return 0, nil
-	}
+func (p *KafkaProducer) publishEvent(ctx context.Context, topic, key string, event interface{}) error {
+	value, err := json.Marshal(event)
 	if err != nil {
-		r.logger.Error("Failed to get unread count from Redis", err, map[string]interface{}{
-			"user_id": userID,
+		p.logger.Error("Failed to marshal event", err, map[string]interface{}{
+			"topic": topic,
+			"key":   key,
 		})
-		return 0, fmt.Errorf("failed to get unread count: %w", err)
+		return fmt.Errorf("failed to marshal event: %w", err)
 	}
-	return val, nil
-}
 
-// AcquireLock получает блокировку с таймаутом
-func (r *RedisRepository) AcquireLock(ctx context.Context, key string, ttl time.Duration) (bool, error) {
-	lockKey := fmt.Sprintf("%s%s", keyPrefixLock, key)
-	ok, err := r.client.SetNX(ctx, lockKey, 1, ttl).Result()
+	p.writer.Topic = topic
+
+	start := time.Now()
+	err = p.writer.WriteMessages(ctx,
+		kafka.Message{
+			Key:   []byte(key),
+			Value: value,
+			Time:  time.Now(),
+		},
+	)
+	elapsed := time.Since(start)
+
 	if err != nil {
-		r.logger.Error("Failed to acquire lock", err, map[string]interface{}{
-			"key": key,
+		p.logger.Error("Failed to publish event", err, map[string]interface{}{
+			"topic":   topic,
+			"key":     key,
+			"elapsed": elapsed.String(),
 		})
-		return false, fmt.Errorf("failed to acquire lock: %w", err)
-	}
-	return ok, nil
-}
-
-// ReleaseLock освобождает блокировку
-func (r *RedisRepository) ReleaseLock(ctx context.Context, key string) error {
-	lockKey := fmt.Sprintf("%s%s", keyPrefixLock, key)
-	return r.deleteValue(ctx, lockKey)
-}
-
-// InvalidateAll удаляет все данные из кэша для указанного типа
-func (r *RedisRepository) InvalidateAll(ctx context.Context, prefix string) error {
-	pattern := fmt.Sprintf("%s*", prefix)
-	keys, err := r.client.Keys(ctx, pattern).Result()
-	if err != nil {
-		r.logger.Error("Failed to get keys for pattern", err, map[string]interface{}{
-			"pattern": pattern,
-		})
-		return fmt.Errorf("failed to get keys for pattern: %w", err)
+		return fmt.Errorf("failed to publish event: %w", err)
 	}
 
-	if len(keys) > 0 {
-		if err := r.client.Del(ctx, keys...).Err(); err != nil {
-			r.logger.Error("Failed to delete keys", err, map[string]interface{}{
-				"count": len(keys),
-			})
-			return fmt.Errorf("failed to delete keys: %w", err)
-		}
-	}
+	p.logger.Debug("Successfully published event", map[string]interface{}{
+		"topic":   topic,
+		"key":     key,
+		"elapsed": elapsed.String(),
+	})
 
-	return nil
-}
-
-// Вспомогательные методы
-
-// cacheValue сохраняет значение в кэш
-func (r *RedisRepository) cacheValue(ctx context.Context, key string, value interface{}) error {
-	data, err := json.Marshal(value)
-	if err != nil {
-		r.logger.Error("Failed to marshal value", err, map[string]interface{}{
-			"key": key,
-		})
-		return fmt.Errorf("failed to marshal value: %w", err)
-	}
-
-	if err := r.client.Set(ctx, key, data, r.ttl).Err(); err != nil {
-		r.logger.Error("Failed to set value in Redis", err, map[string]interface{}{
-			"key": key,
-		})
-		return fmt.Errorf("failed to set value in Redis: %w", err)
-	}
-
-	return nil
-}
-
-// getValue получает значение из кэша
-func (r *RedisRepository) getValue(ctx context.Context, key string, dest interface{}) error {
-	data, err := r.client.Get(ctx, key).Bytes()
-	if err == redis.Nil {
-		return fmt.Errorf("key not found")
-	}
-	if err != nil {
-		r.logger.Error("Failed to get value from Redis", err, map[string]interface{}{
-			"key": key,
-		})
-		return fmt.Errorf("failed to get value from Redis: %w", err)
-	}
-
-	if err := json.Unmarshal(data, dest); err != nil {
-		r.logger.Error("Failed to unmarshal value", err, map[string]interface{}{
-			"key": key,
-		})
-		return fmt.Errorf("failed to unmarshal value: %w", err)
-	}
-
-	return nil
-}
-
-// deleteValue удаляет значение из кэша
-func (r *RedisRepository) deleteValue(ctx context.Context, key string) error {
-	if err := r.client.Del(ctx, key).Err(); err != nil {
-		r.logger.Error("Failed to delete value from Redis", err, map[string]interface{}{
-			"key": key,
-		})
-		return fmt.Errorf("failed to delete value from Redis: %w", err)
-	}
 	return nil
 }

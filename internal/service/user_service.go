@@ -12,6 +12,7 @@ import (
 	"github.com/nurlyy/task_manager/internal/repository"
 	"github.com/nurlyy/task_manager/pkg/auth"
 	"github.com/nurlyy/task_manager/pkg/logger"
+	"github.com/nurlyy/task_manager/internal/repository/cache"
 )
 
 // Стандартные ошибки
@@ -27,12 +28,12 @@ type UserService struct {
 	repo   repository.UserRepository
 	jwtManager *auth.JWTManager
 	logger logger.Logger
-	cacheRepo *repository.CacheRepository
+	cacheRepo *cache.RedisRepository
 }
 
 // NewUserService создает новый экземпляр UserService
 func NewUserService(repo repository.UserRepository, jwtManager *auth.JWTManager, 
-	cacheRepo *repository.CacheRepository, logger logger.Logger) *UserService {
+	cacheRepo *cache.RedisRepository, logger logger.Logger) *UserService {
 	return &UserService{
 		repo:   repo,
 		jwtManager: jwtManager,

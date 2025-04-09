@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,18 +14,18 @@ import (
 
 // Префиксы ключей для разных типов данных
 const (
-	keyPrefixUser             = "user:"
-	keyPrefixTask             = "task:"
-	keyPrefixProject          = "project:"
-	keyPrefixProjectMembers   = "project:members:"
-	keyPrefixTaskList         = "task:list:"
-	keyPrefixProjectList      = "project:list:"
-	keyPrefixUserTasks        = "user:tasks:"
-	keyPrefixUserProjects     = "user:projects:"
-	keyPrefixTaskComments     = "task:comments:"
-	keyPrefixNotifications    = "notifications:"
-	keyPrefixUnreadCount      = "unread:count:"
-	keyPrefixLock             = "lock:"
+	keyPrefixUser           = "user:"
+	keyPrefixTask           = "task:"
+	keyPrefixProject        = "project:"
+	keyPrefixProjectMembers = "project:members:"
+	keyPrefixTaskList       = "task:list:"
+	keyPrefixProjectList    = "project:list:"
+	keyPrefixUserTasks      = "user:tasks:"
+	keyPrefixUserProjects   = "user:projects:"
+	keyPrefixTaskComments   = "task:comments:"
+	keyPrefixNotifications  = "notifications:"
+	keyPrefixUnreadCount    = "unread:count:"
+	keyPrefixLock           = "lock:"
 )
 
 // RedisRepository реализует репозиторий кэширования с использованием Redis
@@ -314,5 +315,52 @@ func (r *RedisRepository) deleteValue(ctx context.Context, key string) error {
 		})
 		return fmt.Errorf("failed to delete value from Redis: %w", err)
 	}
+	return nil
+}
+
+// Delete удаляет значение из кэша по ключу
+func (r *RedisRepository) Delete(ctx context.Context, key string) error {
+	cmd := r.client.Del(ctx, key)
+	if err := cmd.Err(); err != nil && err != redis.Nil {
+		r.logger.Error("Failed to delete key from Redis", err, map[string]interface{}{
+			"key": key,
+		})
+		return err
+	}
+	return nil
+}
+
+// Get получает значение из Redis по ключу как строку
+func (r *RedisRepository) Get(ctx context.Context, key string, dest interface{}) error {
+	val, err := r.client.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			// Ключ не найден в Redis
+			return errors.New("key not found")
+		}
+		return err // другая ошибка Redis
+	}
+
+	// Десериализуем значение из JSON в переданную переменную
+	if err := json.Unmarshal([]byte(val), dest); err != nil {
+		return fmt.Errorf("failed to unmarshal cached value: %w", err)
+	}
+
+	return nil
+}
+
+func (r *RedisRepository) Set(ctx context.Context, key string, value interface{}) error {
+	// Сериализуем значение в JSON
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("failed to marshal value for cache: %w", err)
+	}
+
+	// Устанавливаем значение в Redis без TTL (или с дефолтным TTL, если хочешь)
+	err = r.client.Set(ctx, key, data, 0).Err() // 0 — без истечения
+	if err != nil {
+		return fmt.Errorf("failed to set value in cache: %w", err)
+	}
+
 	return nil
 }
