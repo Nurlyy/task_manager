@@ -69,8 +69,13 @@ services:
       - SMTP_USER=
       - SMTP_PASSWORD=
       - SMTP_FROM=noreply@tasktracker.com
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN:-}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - LOG_LEVEL=info
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=taskuser
+      - DB_PASSWORD=taskpass
+      - DB_NAME=tasktracker
     depends_on:
       - redis
       - kafka
