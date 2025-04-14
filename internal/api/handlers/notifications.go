@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/nurlyy/task_manager/internal/domain"
+	"github.com/nurlyy/task_manager/internal/repository"
 	"github.com/nurlyy/task_manager/internal/service"
 )
 
@@ -45,7 +46,9 @@ func (h *NotificationHandler) GetNotification(w http.ResponseWriter, r *http.Req
 			h.RespondWithError(w, r, http.StatusNotFound, "Notification not found", "notification_not_found")
 			return
 		}
-		h.Logger.Error("Failed to get notification", err, "id", notificationID)
+		h.Logger.Error("Failed to get notification", err, map[string]interface{}{
+			"id": notificationID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get notification info", "notification_fetch_failed")
 		return
 	}
@@ -75,7 +78,9 @@ func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request)
 			h.RespondWithError(w, r, http.StatusNotFound, "Notification not found", "notification_not_found")
 			return
 		}
-		h.Logger.Error("Failed to mark notification as read", err, "id", notificationID)
+		h.Logger.Error("Failed to mark notification as read", err, map[string]interface{}{
+			"id": notificationID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to mark notification as read", "mark_read_failed")
 		return
 	}
@@ -94,7 +99,9 @@ func (h *NotificationHandler) MarkAllAsRead(w http.ResponseWriter, r *http.Reque
 
 	// Отмечаем все уведомления как прочитанные
 	if err := h.notificationService.MarkAllAsRead(r.Context(), userID); err != nil {
-		h.Logger.Error("Failed to mark all notifications as read", err, "user_id", userID)
+		h.Logger.Error("Failed to mark all notifications as read", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to mark all notifications as read", "mark_all_read_failed")
 		return
 	}
@@ -124,7 +131,9 @@ func (h *NotificationHandler) DeleteNotification(w http.ResponseWriter, r *http.
 			h.RespondWithError(w, r, http.StatusNotFound, "Notification not found", "notification_not_found")
 			return
 		}
-		h.Logger.Error("Failed to delete notification", err, "id", notificationID)
+		h.Logger.Error("Failed to delete notification", err, map[string]interface{}{
+			"id": notificationID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to delete notification", "delete_failed")
 		return
 	}
@@ -174,7 +183,9 @@ func (h *NotificationHandler) ListNotifications(w http.ResponseWriter, r *http.R
 	// Получаем список уведомлений
 	result, err := h.notificationService.GetUserNotifications(r.Context(), userID, filter, page, pageSize)
 	if err != nil {
-		h.Logger.Error("Failed to list notifications", err, "user_id", userID)
+		h.Logger.Error("Failed to list notifications", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get notifications", "notifications_fetch_failed")
 		return
 	}
@@ -194,7 +205,9 @@ func (h *NotificationHandler) GetUnreadCount(w http.ResponseWriter, r *http.Requ
 	// Получаем количество непрочитанных уведомлений
 	count, err := h.notificationService.GetUnreadCount(r.Context(), userID)
 	if err != nil {
-		h.Logger.Error("Failed to get unread notifications count", err, "user_id", userID)
+		h.Logger.Error("Failed to get unread notifications count", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get unread count", "unread_count_failed")
 		return
 	}
@@ -214,7 +227,9 @@ func (h *NotificationHandler) GetNotificationSettings(w http.ResponseWriter, r *
 	// Получаем настройки уведомлений
 	settings, err := h.notificationService.GetUserNotificationSettings(r.Context(), userID)
 	if err != nil {
-		h.Logger.Error("Failed to get notification settings", err, "user_id", userID)
+		h.Logger.Error("Failed to get notification settings", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get notification settings", "settings_fetch_failed")
 		return
 	}
@@ -248,7 +263,9 @@ func (h *NotificationHandler) UpdateNotificationSettings(w http.ResponseWriter, 
 
 	// Обновляем настройки уведомлений
 	if err := h.notificationService.UpdateUserNotificationSettings(r.Context(), userID, settings); err != nil {
-		h.Logger.Error("Failed to update notification settings", err, "user_id", userID)
+		h.Logger.Error("Failed to update notification settings", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update notification settings", "settings_update_failed")
 		return
 	}

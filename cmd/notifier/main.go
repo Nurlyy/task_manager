@@ -29,7 +29,7 @@ func main() {
 	cfg.App.Context = ctx
 
 	// Инициализируем логгер
-	logger, err := applogger.NewLogger(cfg.App.LogLevel, cfg.App.Environment)
+	logger, err := applogger.NewLogger(cfg.App.LogLevel, false)
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
@@ -49,6 +49,7 @@ func main() {
 		application.Repositories.UserRepository,
 		application.Repositories.TaskRepository,
 		application.Repositories.ProjectRepository,
+		application.Repositories.TelegramRepository,
 		cfg.Kafka.Brokers,
 		&cfg.Notifier,
 		logger,

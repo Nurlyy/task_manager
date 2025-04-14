@@ -11,7 +11,6 @@ import (
 
 	"github.com/nurlyy/task_manager/internal/domain"
 	"github.com/nurlyy/task_manager/internal/repository"
-	"github.com/nurlyy/task_manager/internal/repository/postgres"
 	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
@@ -21,7 +20,7 @@ type TelegramSender struct {
 	apiBaseURL   string
 	client       *http.Client
 	logger       logger.Logger
-	telegramRepo postgres.TelegramRepository
+	telegramRepo repository.TelegramRepository
 }
 
 // TelegramResponse представляет ответ от Telegram API
@@ -249,7 +248,11 @@ func (s *TelegramSender) RegisterUserTelegram(userID, telegramID string) error {
 	// Например, обновление в базе данных или через API
 
 	// Заглушка - просто логируем действие
-	s.logger.Info("Registering Telegram for user", "user_id", userID, "telegram_id", telegramID)
+	s.logger.Info("Registering Telegram for user", map[string]interface{}{
+		"user_id": userID,
+	}, map[string]interface{}{
+		"telegram_id": telegramID,
+	})
 
 	return nil
 }

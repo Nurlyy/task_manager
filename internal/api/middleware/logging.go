@@ -37,12 +37,24 @@ func (m *LoggingMiddleware) LogRequest(next http.Handler) http.Handler {
 
 		// Логируем информацию о входящем запросе
 		m.logger.Info("Incoming request",
-			"request_id", requestID,
-			"method", r.Method,
-			"path", r.URL.Path,
-			"query", r.URL.RawQuery,
-			"remote_addr", r.RemoteAddr,
-			"user_agent", r.UserAgent(),
+			map[string]interface{}{
+				"request_id": requestID,
+			},
+			map[string]interface{}{
+				"method": r.Method,
+			},
+			map[string]interface{}{
+				"path": r.URL.Path,
+			},
+			map[string]interface{}{
+				"query": r.URL.RawQuery,
+			},
+			map[string]interface{}{
+				"remote_addr": r.RemoteAddr,
+			},
+			map[string]interface{}{
+				"user_agent": r.UserAgent(),
+			},
 		)
 
 		// Получаем информацию о пользователе из контекста (если есть)
@@ -58,28 +70,36 @@ func (m *LoggingMiddleware) LogRequest(next http.Handler) http.Handler {
 		duration := time.Since(startTime)
 
 		// Логируем информацию о завершении запроса
-		logData := []interface{}{
-			"request_id", requestID,
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", rwWithStatus.statusCode,
-			"duration", duration.String(),
-			"duration_ms", duration.Milliseconds(),
+		logData := map[string]interface{}{
+			"request_id":  requestID,
+			"method":      r.Method,
+			"path":        r.URL.Path,
+			"status":      rwWithStatus.statusCode,
+			"duration":    duration.String(),
+			"duration_ms": duration.Milliseconds(),
 		}
 
 		// Добавляем информацию о пользователе, если она есть
 		if userExists {
-			logData = append(logData, "user_id", userID)
+			logData["user_id"] = userID
 		}
 
-		// Выбираем уровень логирования в зависимости от кода статуса
-		if rwWithStatus.statusCode >= 500 {
-			m.logger.Error("Request completed with server error", logData...)
-		} else if rwWithStatus.statusCode >= 400 {
-			m.logger.Warn("Request completed with client error", logData...)
-		} else {
-			m.logger.Info("Request completed successfully", logData...)
-		}
+		// 	// Выбираем уровень логирования в зависимости от кода статуса
+		// 	if rwWithStatus.statusCode >= 500 {
+		// 		m.logger.Error(fmt.Errorf("Request completed with server error"), map[string]interface{}{
+		//     "request_id": requestID,
+		//     "method":     r.Method,
+		//     "path":       r.URL.Path,
+		//     "status":     rwWithStatus.statusCode,
+		//     "duration":   duration.String(),
+		//     "duration_ms": duration.Milliseconds(),
+		//     "user_id":    userID, // добавляем, если userExists == true
+		// })
+		// 	} else if rwWithStatus.statusCode >= 400 {
+		// 		m.logger.Warn("Request completed with client error", logData)
+		// 	} else {
+		// 		m.logger.Info("Request completed successfully", logData)
+		// 	}
 	})
 }
 

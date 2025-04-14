@@ -10,27 +10,27 @@ import (
 	"github.com/nurlyy/task_manager/internal/domain"
 	"github.com/nurlyy/task_manager/internal/messaging"
 	"github.com/nurlyy/task_manager/internal/repository"
-	"github.com/nurlyy/task_manager/pkg/logger"
 	"github.com/nurlyy/task_manager/internal/repository/cache"
+	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
 // Стандартные ошибки
 var (
-	ErrTaskNotFound         = errors.New("task not found")
-	ErrTaskAccessDenied     = errors.New("access to task denied")
-	ErrInvalidTaskStatus    = errors.New("invalid task status transition")
+	ErrTaskNotFound      = errors.New("task not found")
+	ErrTaskAccessDenied  = errors.New("access to task denied")
+	ErrInvalidTaskStatus = errors.New("invalid task status transition")
 )
 
 // TaskService представляет бизнес-логику для работы с задачами
 type TaskService struct {
-	taskRepo     repository.TaskRepository
-	projectRepo  repository.ProjectRepository
-	userRepo     repository.UserRepository
-	commentRepo  repository.CommentRepository
-	cacheRepo *cache.RedisRepository
-	producer     *messaging.KafkaProducer
-	projectSvc   *ProjectService
-	logger       logger.Logger
+	taskRepo    repository.TaskRepository
+	projectRepo repository.ProjectRepository
+	userRepo    repository.UserRepository
+	commentRepo repository.CommentRepository
+	cacheRepo   *cache.RedisRepository
+	producer    *messaging.KafkaProducer
+	projectSvc  *ProjectService
+	logger      logger.Logger
 }
 
 // NewTaskService создает новый экземпляр TaskService
@@ -90,7 +90,11 @@ func (s *TaskService) Create(ctx context.Context, req domain.TaskCreateRequest, 
 	// Добавляем теги к задаче
 	if len(req.Tags) > 0 {
 		if err := s.taskRepo.UpdateTags(ctx, task.ID, req.Tags); err != nil {
-			s.logger.Warn("Failed to add tags to task", "task_id", task.ID, "error", err)
+			s.logger.Warn("Failed to add tags to task", map[string]interface{}{
+				"task_id": task.ID,
+			}, map[string]interface{}{
+				"error": err,
+			})
 		}
 	}
 
@@ -110,8 +114,12 @@ func (s *TaskService) Create(ctx context.Context, req domain.TaskCreateRequest, 
 		Type:        messaging.EventTypeTaskCreated,
 	}
 
-	if err := s.producer.PublishTaskEvent(ctx, messaging.EventTypeTaskCreated, event); err != nil {
-		s.logger.Warn("Failed to publish task creation event", "task_id", task.ID, "error", err)
+	if err := s.producer.PublishTaskCreated(ctx, event); err != nil {
+		s.logger.Warn("Failed to publish task creation event", map[string]interface{}{
+			"task_id": task.ID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Если указан исполнитель, отправляем уведомление о назначении
@@ -168,7 +176,9 @@ func (s *TaskService) GetByID(ctx context.Context, id string, userID string) (*d
 	// Получаем задачу из БД
 	task, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID", err, "id", id)
+		s.logger.Error("Failed to get task by ID", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrTaskNotFound
 	}
 
@@ -180,7 +190,11 @@ func (s *TaskService) GetByID(ctx context.Context, id string, userID string) (*d
 	// Получаем теги задачи
 	tags, err := s.taskRepo.GetTags(ctx, id)
 	if err != nil {
-		s.logger.Warn("Failed to get task tags", "task_id", id, "error", err)
+		s.logger.Warn("Failed to get task tags", map[string]interface{}{
+			"task_id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 	task.Tags = tags
 
@@ -214,7 +228,7 @@ func (s *TaskService) GetByID(ctx context.Context, id string, userID string) (*d
 
 	// Получаем комментарии к задаче
 	comments, err := s.commentRepo.GetCommentsByTask(ctx, id, repository.CommentFilter{
-		OrderBy: func() *string { s := "created_at"; return &s }(),
+		OrderBy:  func() *string { s := "created_at"; return &s }(),
 		OrderDir: func() *string { s := "desc"; return &s }(),
 		Limit:    50,
 	})
@@ -270,7 +284,11 @@ func (s *TaskService) GetByID(ctx context.Context, id string, userID string) (*d
 
 	// Сохраняем в кэш
 	if err := s.cacheRepo.Set(ctx, cacheKey, resp); err != nil {
-		s.logger.Warn("Failed to cache task", "id", id, "error", err)
+		s.logger.Warn("Failed to cache task", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return &resp, nil
@@ -281,7 +299,9 @@ func (s *TaskService) Update(ctx context.Context, id string, req domain.TaskUpda
 	// Получаем задачу из БД
 	task, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID for update", err, "id", id)
+		s.logger.Error("Failed to get task by ID for update", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrTaskNotFound
 	}
 
@@ -354,14 +374,20 @@ func (s *TaskService) Update(ctx context.Context, id string, req domain.TaskUpda
 
 	// Обновляем задачу в БД
 	if err := s.taskRepo.Update(ctx, task); err != nil {
-		s.logger.Error("Failed to update task", err, "id", id)
+		s.logger.Error("Failed to update task", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, err
 	}
 
 	// Обновляем теги, если они были переданы
 	if req.Tags != nil {
 		if err := s.taskRepo.UpdateTags(ctx, task.ID, *req.Tags); err != nil {
-			s.logger.Warn("Failed to update task tags", "task_id", task.ID, "error", err)
+			s.logger.Warn("Failed to update task tags", map[string]interface{}{
+				"task_id": task.ID,
+			}, map[string]interface{}{
+				"error": err,
+			})
 		}
 		task.Tags = *req.Tags
 	} else {
@@ -375,25 +401,33 @@ func (s *TaskService) Update(ctx context.Context, id string, req domain.TaskUpda
 	// Удаляем задачу из кэша
 	cacheKey := "task:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete task from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete task from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Отправляем событие об обновлении задачи, если были изменения
 	if len(changes) > 0 {
 		event := &messaging.TaskEvent{
-			ID:          task.ID,
-			Title:       task.Title,
-			ProjectID:   task.ProjectID,
-			Status:      string(task.Status),
-			Priority:    string(task.Priority),
-			AssigneeID:  task.AssigneeID,
-			UpdatedAt:   task.UpdatedAt,
-			Type:        messaging.EventTypeTaskUpdated,
-			Changes:     changes,
+			ID:         task.ID,
+			Title:      task.Title,
+			ProjectID:  task.ProjectID,
+			Status:     string(task.Status),
+			Priority:   string(task.Priority),
+			AssigneeID: task.AssigneeID,
+			UpdatedAt:  task.UpdatedAt,
+			Type:       messaging.EventTypeTaskUpdated,
+			Changes:    changes,
 		}
 
-		if err := s.producer.PublishTaskEvent(ctx, messaging.EventTypeTaskUpdated, event); err != nil {
-			s.logger.Warn("Failed to publish task update event", "task_id", task.ID, "error", err)
+		if err := s.producer.PublishTaskUpdated(ctx, event, event.Changes); err != nil {
+			s.logger.Warn("Failed to publish task update event", map[string]interface{}{
+				"task_id": task.ID,
+			}, map[string]interface{}{
+				"error": err,
+			})
 		}
 
 		// Если изменился исполнитель, отправляем уведомление
@@ -455,9 +489,9 @@ func (s *TaskService) canManageTask(ctx context.Context, projectID string, userI
 	}
 
 	// Проверяем роль пользователя в проекте
-	return member.Role == domain.ProjectRoleOwner || 
-		   member.Role == domain.ProjectRoleManager || 
-		   member.Role == domain.ProjectRoleMember
+	return member.Role == domain.ProjectRoleOwner ||
+		member.Role == domain.ProjectRoleManager ||
+		member.Role == domain.ProjectRoleMember
 }
 
 // isValidStatusTransition проверяет корректность перехода из одного статуса в другой
@@ -523,13 +557,17 @@ func (s *TaskService) notifyTaskAssigned(ctx context.Context, task *domain.Task,
 	// Получаем данные о пользователях
 	assignee, err := s.userRepo.GetByID(ctx, *task.AssigneeID)
 	if err != nil {
-		s.logger.Error("Failed to get assignee", err, "user_id", *task.AssigneeID)
+		s.logger.Error("Failed to get assignee", err, map[string]interface{}{
+			"user_id": assignee.ID,
+		})
 		return
 	}
 
 	assigner, err := s.userRepo.GetByID(ctx, assignerID)
 	if err != nil {
-		s.logger.Error("Failed to get assigner", err, "user_id", assignerID)
+		s.logger.Error("Failed to get assigner", err, map[string]interface{}{
+			"user_id": assignerID,
+		})
 		return
 	}
 
@@ -550,8 +588,10 @@ func (s *TaskService) notifyTaskAssigned(ctx context.Context, task *domain.Task,
 		},
 	}
 
-	if err := s.producer.PublishNotificationEvent(ctx, messaging.EventTypeNotification, notificationEvent); err != nil {
-		s.logger.Error("Failed to publish notification event", err, "task_id", task.ID)
+	if err := s.producer.PublishNotification(ctx, notificationEvent); err != nil {
+		s.logger.Error("Failed to publish notification event", err, map[string]interface{}{
+			"task_id": task.ID,
+		})
 	}
 }
 
@@ -560,7 +600,9 @@ func (s *TaskService) UpdateAssignee(ctx context.Context, id string, assigneeID 
 	// Получаем задачу из БД
 	task, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID for assignee update", err, "id", id)
+		s.logger.Error("Failed to get task by ID for assignee update", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrTaskNotFound
 	}
 
@@ -583,20 +625,28 @@ func (s *TaskService) UpdateAssignee(ctx context.Context, id string, assigneeID 
 
 	// Обновляем исполнителя задачи
 	if err := s.taskRepo.UpdateAssignee(ctx, id, assigneeID, userID); err != nil {
-		s.logger.Error("Failed to update task assignee", err, "id", id)
+		s.logger.Error("Failed to update task assignee", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, err
 	}
 
 	// Удаляем задачу из кэша
 	cacheKey := "task:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete task from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete task from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Получаем обновленную задачу
 	updatedTask, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get updated task", err, "id", id)
+		s.logger.Error("Failed to get updated task", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, err
 	}
 
@@ -616,15 +666,15 @@ func (s *TaskService) UpdateAssignee(ctx context.Context, id string, assigneeID 
 	}
 
 	event := &messaging.TaskEvent{
-		ID:          updatedTask.ID,
-		Title:       updatedTask.Title,
-		ProjectID:   updatedTask.ProjectID,
-		Status:      string(updatedTask.Status),
-		Priority:    string(updatedTask.Priority),
-		AssigneeID:  updatedTask.AssigneeID,
-		AssignerID:  userID,
-		UpdatedAt:   updatedTask.UpdatedAt,
-		Type:        messaging.EventTypeTaskAssigned,
+		ID:         updatedTask.ID,
+		Title:      updatedTask.Title,
+		ProjectID:  updatedTask.ProjectID,
+		Status:     string(updatedTask.Status),
+		Priority:   string(updatedTask.Priority),
+		AssigneeID: updatedTask.AssigneeID,
+		AssignerID: userID,
+		UpdatedAt:  updatedTask.UpdatedAt,
+		Type:       messaging.EventTypeTaskAssigned,
 		Changes: map[string]interface{}{
 			"assignee_id": map[string]interface{}{
 				"old": oldAssigneeID,
@@ -633,8 +683,12 @@ func (s *TaskService) UpdateAssignee(ctx context.Context, id string, assigneeID 
 		},
 	}
 
-	if err := s.producer.PublishTaskEvent(ctx, messaging.EventTypeTaskAssigned, event); err != nil {
-		s.logger.Warn("Failed to publish task assignee update event", "task_id", updatedTask.ID, "error", err)
+	if err := s.producer.PublishTaskUpdated(ctx, event, event.Changes); err != nil {
+		s.logger.Warn("Failed to publish task assignee update event", map[string]interface{}{
+			"task_id": updatedTask.ID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Если назначен новый исполнитель, отправляем уведомление
@@ -678,7 +732,9 @@ func (s *TaskService) LogTime(ctx context.Context, id string, req domain.LogTime
 	// Получаем задачу из БД
 	task, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID for logging time", err, "id", id)
+		s.logger.Error("Failed to get task by ID for logging time", err, map[string]interface{}{
+			"id": id,
+		})
 		return ErrTaskNotFound
 	}
 
@@ -705,7 +761,9 @@ func (s *TaskService) LogTime(ctx context.Context, id string, req domain.LogTime
 
 	// Добавляем запись о затраченном времени
 	if err := s.taskRepo.LogTime(ctx, timeLog); err != nil {
-		s.logger.Error("Failed to log time", err, "task_id", id)
+		s.logger.Error("Failed to log time", err, map[string]interface{}{
+			"task_id": id,
+		})
 		return err
 	}
 
@@ -716,19 +774,25 @@ func (s *TaskService) LogTime(ctx context.Context, id string, req domain.LogTime
 	} else {
 		spentHours = req.Hours
 	}
-	
+
 	task.SpentHours = &spentHours
 	task.UpdatedAt = time.Now()
 
 	if err := s.taskRepo.Update(ctx, task); err != nil {
-		s.logger.Error("Failed to update task spent hours", err, "id", id)
+		s.logger.Error("Failed to update task spent hours", err, map[string]interface{}{
+			"id": id,
+		})
 		return err
 	}
 
 	// Удаляем задачу из кэша
 	cacheKey := "task:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete task from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete task from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return nil
@@ -739,7 +803,9 @@ func (s *TaskService) GetTimeLogs(ctx context.Context, id string, userID string)
 	// Получаем задачу из БД
 	task, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID for getting time logs", err, "id", id)
+		s.logger.Error("Failed to get task by ID for getting time logs", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrTaskNotFound
 	}
 
@@ -751,17 +817,21 @@ func (s *TaskService) GetTimeLogs(ctx context.Context, id string, userID string)
 	// Получаем записи о затраченном времени
 	timeLogs, err := s.taskRepo.GetTimeLogs(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get time logs", err, "task_id", id)
+		s.logger.Error("Failed to get time logs", err, map[string]interface{}{
+			"task_id": id,
+		})
 		return nil, err
 	}
 
 	return timeLogs, nil
-}// Delete удаляет задачу
+} // Delete удаляет задачу
 func (s *TaskService) Delete(ctx context.Context, id string, userID string) error {
 	// Получаем задачу из БД
 	task, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID for delete", err, "id", id)
+		s.logger.Error("Failed to get task by ID for delete", err, map[string]interface{}{
+			"id": id,
+		})
 		return ErrTaskNotFound
 	}
 
@@ -772,14 +842,20 @@ func (s *TaskService) Delete(ctx context.Context, id string, userID string) erro
 
 	// Удаляем задачу из БД
 	if err := s.taskRepo.Delete(ctx, id); err != nil {
-		s.logger.Error("Failed to delete task", err, "id", id)
+		s.logger.Error("Failed to delete task", err, map[string]interface{}{
+			"id": id,
+		})
 		return err
 	}
 
 	// Удаляем задачу из кэша
 	cacheKey := "task:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete task from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete task from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return nil
@@ -789,17 +865,17 @@ func (s *TaskService) Delete(ctx context.Context, id string, userID string) erro
 func (s *TaskService) List(ctx context.Context, filter domain.TaskFilterOptions, userID string, page, pageSize int) (*domain.PagedResponse, error) {
 	// Преобразуем фильтр доменной модели в фильтр репозитория
 	repoFilter := repository.TaskFilter{
-		ProjectIDs:  []string{},
-		SearchText:  filter.SearchText,
-		Status:      filter.Status,
-		Priority:    filter.Priority,
-		AssigneeID:  filter.AssigneeID,
-		CreatedBy:   filter.CreatedBy,
-		DueBefore:   filter.DueBefore,
-		DueAfter:    filter.DueAfter,
-		Tags:        filter.Tags,
-		Limit:       pageSize,
-		Offset:      (page - 1) * pageSize,
+		ProjectIDs: []string{},
+		SearchText: filter.SearchText,
+		Status:     filter.Status,
+		Priority:   filter.Priority,
+		AssigneeID: filter.AssigneeID,
+		CreatedBy:  filter.CreatedBy,
+		DueBefore:  filter.DueBefore,
+		DueAfter:   filter.DueAfter,
+		Tags:       filter.Tags,
+		Limit:      pageSize,
+		Offset:     (page - 1) * pageSize,
 	}
 
 	// Если указан ID проекта, проверяем доступ пользователя к нему
@@ -815,7 +891,9 @@ func (s *TaskService) List(ctx context.Context, filter domain.TaskFilterOptions,
 		}
 		projects, err := s.projectRepo.List(ctx, projectFilter)
 		if err != nil {
-			s.logger.Error("Failed to list user projects", err, "user_id", userID)
+			s.logger.Error("Failed to list user projects", err, map[string]interface{}{
+				"user_id": userID,
+			})
 			return nil, err
 		}
 
@@ -909,7 +987,9 @@ func (s *TaskService) UpdateStatus(ctx context.Context, id string, status domain
 	// Получаем задачу из БД
 	task, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get task by ID for status update", err, "id", id)
+		s.logger.Error("Failed to get task by ID for status update", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrTaskNotFound
 	}
 
@@ -930,20 +1010,28 @@ func (s *TaskService) UpdateStatus(ctx context.Context, id string, status domain
 
 	// Обновляем статус задачи
 	if err := s.taskRepo.UpdateStatus(ctx, id, status, userID); err != nil {
-		s.logger.Error("Failed to update task status", err, "id", id)
+		s.logger.Error("Failed to update task status", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, err
 	}
 
 	// Удаляем задачу из кэша
 	cacheKey := "task:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete task from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete task from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Получаем обновленную задачу
 	updatedTask, err := s.taskRepo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get updated task", err, "id", id)
+		s.logger.Error("Failed to get updated task", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, err
 	}
 
@@ -955,14 +1043,14 @@ func (s *TaskService) UpdateStatus(ctx context.Context, id string, status domain
 
 	// Отправляем событие об обновлении задачи
 	event := &messaging.TaskEvent{
-		ID:          updatedTask.ID,
-		Title:       updatedTask.Title,
-		ProjectID:   updatedTask.ProjectID,
-		Status:      string(updatedTask.Status),
-		Priority:    string(updatedTask.Priority),
-		AssigneeID:  updatedTask.AssigneeID,
-		UpdatedAt:   updatedTask.UpdatedAt,
-		Type:        messaging.EventTypeTaskUpdated,
+		ID:         updatedTask.ID,
+		Title:      updatedTask.Title,
+		ProjectID:  updatedTask.ProjectID,
+		Status:     string(updatedTask.Status),
+		Priority:   string(updatedTask.Priority),
+		AssigneeID: updatedTask.AssigneeID,
+		UpdatedAt:  updatedTask.UpdatedAt,
+		Type:       messaging.EventTypeTaskUpdated,
 		Changes: map[string]interface{}{
 			"status": map[string]interface{}{
 				"old": string(task.Status),
@@ -971,8 +1059,12 @@ func (s *TaskService) UpdateStatus(ctx context.Context, id string, status domain
 		},
 	}
 
-	if err := s.producer.PublishTaskEvent(ctx, messaging.EventTypeTaskUpdated, event); err != nil {
-		s.logger.Warn("Failed to publish task status update event", "task_id", updatedTask.ID, "error", err)
+	if err := s.producer.PublishTaskUpdated(ctx, event, event.Changes); err != nil {
+		s.logger.Warn("Failed to publish task status update event", map[string]interface{}{
+			"task_id": updatedTask.ID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Формируем ответ

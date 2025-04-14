@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/nurlyy/task_manager/internal/messaging"
 	"github.com/nurlyy/task_manager/internal/repository/cache"
 	"github.com/nurlyy/task_manager/internal/repository/postgres"
-	"github.com/nurlyy/task_manager/internal/messaging"
+	redisClient "github.com/nurlyy/task_manager/pkg/cache"
 	"github.com/nurlyy/task_manager/pkg/config"
 	"github.com/nurlyy/task_manager/pkg/database"
-	redisClient "github.com/nurlyy/task_manager/pkg/cache"
 	"github.com/nurlyy/task_manager/pkg/logger"
 )
 
@@ -22,6 +22,7 @@ type Repositories struct {
 	CommentRepository      *postgres.CommentRepository
 	NotificationRepository *postgres.NotificationRepository
 	CacheRepository        *cache.RedisRepository
+	TelegramRepository     *postgres.TelegramRepository
 }
 
 // Messaging содержит все клиенты для работы с сообщениями

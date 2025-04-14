@@ -6,14 +6,15 @@ import (
 
 // Типы событий
 const (
-	EventTypeTaskCreated        = "task_created"
-	EventTypeTaskUpdated        = "task_updated"
-	EventTypeTaskAssigned       = "task_assigned"
-	EventTypeTaskCommented      = "task_commented"
-	EventTypeProjectCreated     = "project_created"
-	EventTypeProjectUpdated     = "project_updated"
-	EventTypeProjectMemberAdded = "project_member_added"
-	EventTypeNotification       = "notification"
+	EventTypeTaskCreated          = "task_created"
+	EventTypeTaskUpdated          = "task_updated"
+	EventTypeTaskAssigned         = "task_assigned"
+	EventTypeTaskCommented        = "task_commented"
+	EventTypeProjectCreated       = "project_created"
+	EventTypeProjectUpdated       = "project_updated"
+	EventTypeProjectMemberAdded   = "project_member_added"
+	EventTypeProjectMemberRemoved = "project_member_removed"
+	EventTypeNotification         = "notification"
 )
 
 // Event представляет базовое событие
@@ -77,12 +78,12 @@ type ProjectMemberEvent struct {
 
 // NotificationEvent представляет событие уведомления
 type NotificationEvent struct {
-	UserIDs     []string              `json:"user_ids"`
-	Title       string                `json:"title"`
-	Content     string                `json:"content"`
-	Type        string                `json:"type"`
-	EntityID    string                `json:"entity_id"`
-	EntityType  string                `json:"entity_type"`
-	CreatedAt   time.Time             `json:"created_at"`
-	MetaData    map[string]string     `json:"meta_data,omitempty"`
+	UserIDs    []string          `json:"user_ids"`
+	Title      string            `json:"title"`
+	Content    string            `json:"content"`
+	Type       string            `json:"type"`
+	EntityID   string            `json:"entity_id"`
+	EntityType string            `json:"entity_type"`
+	CreatedAt  time.Time         `json:"created_at"`
+	MetaData   map[string]string `json:"meta_data,omitempty"`
 }

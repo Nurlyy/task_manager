@@ -103,7 +103,9 @@ func (h *CommentHandler) GetComment(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the comment", "access_denied")
 			return
 		}
-		h.Logger.Error("Failed to get comment", err, "id", commentID)
+		h.Logger.Error("Failed to get comment", err, map[string]interface{}{
+			"id": commentID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get comment info", "comment_fetch_failed")
 		return
 	}
@@ -155,7 +157,9 @@ func (h *CommentHandler) UpdateComment(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Only comment author can update comment", "insufficient_rights")
 			return
 		}
-		h.Logger.Error("Failed to update comment", err, "id", commentID)
+		h.Logger.Error("Failed to update comment", err, map[string]interface{}{
+			"id": commentID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update comment", "update_failed")
 		return
 	}
@@ -189,7 +193,9 @@ func (h *CommentHandler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Only comment author can delete comment", "insufficient_rights")
 			return
 		}
-		h.Logger.Error("Failed to delete comment", err, "id", commentID)
+		h.Logger.Error("Failed to delete comment", err, map[string]interface{}{
+			"id": commentID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to delete comment", "delete_failed")
 		return
 	}
@@ -227,7 +233,9 @@ func (h *CommentHandler) GetCommentsByTask(w http.ResponseWriter, r *http.Reques
 			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the task", "access_denied")
 			return
 		}
-		h.Logger.Error("Failed to get comments by task", err, "task_id", taskID)
+		h.Logger.Error("Failed to get comments by task", err, map[string]interface{}{
+			"task_id": taskID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get comments", "comments_fetch_failed")
 		return
 	}

@@ -5,24 +5,24 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/robfig/cron/v3"
 	"github.com/nurlyy/task_manager/internal/domain"
 	"github.com/nurlyy/task_manager/internal/messaging"
 	"github.com/nurlyy/task_manager/internal/repository"
 	"github.com/nurlyy/task_manager/pkg/config"
 	"github.com/nurlyy/task_manager/pkg/logger"
+	"github.com/robfig/cron/v3"
 )
 
 // SchedulerService представляет сервис планировщика задач
 type SchedulerService struct {
-	taskRepo          repository.TaskRepository
-	userRepo          repository.UserRepository
-	projectRepo       repository.ProjectRepository
-	notificationRepo  repository.NotificationRepository
-	producer          *messaging.KafkaProducer
-	cron              *cron.Cron
-	logger            logger.Logger
-	config            *config.SchedulerConfig
+	taskRepo         repository.TaskRepository
+	userRepo         repository.UserRepository
+	projectRepo      repository.ProjectRepository
+	notificationRepo repository.NotificationRepository
+	producer         *messaging.KafkaProducer
+	cron             *cron.Cron
+	logger           logger.Logger
+	config           *config.SchedulerConfig
 }
 
 // NewSchedulerService создает новый экземпляр сервиса планировщика
@@ -39,14 +39,14 @@ func NewSchedulerService(
 	cronScheduler := cron.New(cron.WithSeconds())
 
 	return &SchedulerService{
-		taskRepo:          taskRepo,
-		userRepo:          userRepo,
-		projectRepo:       projectRepo,
-		notificationRepo:  notificationRepo,
-		producer:          producer,
-		cron:              cronScheduler,
-		logger:            logger,
-		config:            config,
+		taskRepo:         taskRepo,
+		userRepo:         userRepo,
+		projectRepo:      projectRepo,
+		notificationRepo: notificationRepo,
+		producer:         producer,
+		cron:             cronScheduler,
+		logger:           logger,
+		config:           config,
 	}
 }
 
@@ -117,15 +117,17 @@ func (s *SchedulerService) sendDailyDigests() {
 		// Проверяем настройки уведомлений пользователя
 		settings, err := s.notificationRepo.GetUserNotificationSettings(ctx, user.ID)
 		if err != nil {
-			s.logger.Error("Failed to get notification settings", err, "user_id", user.ID)
+			s.logger.Error("Failed to get notification settings", err, map[string]interface{}{
+				"user_id": user.ID,
+			})
 			continue
 		}
 
 		// Проверяем, включены ли дайджесты для пользователя
 		digestEnabled := false
 		for _, setting := range settings {
-			if setting.NotificationType == domain.NotificationTypeDigest && 
-               (setting.EmailEnabled || setting.WebEnabled) {
+			if setting.NotificationType == domain.NotificationTypeDigest &&
+				(setting.EmailEnabled || setting.WebEnabled) {
 				digestEnabled = true
 				break
 			}
@@ -144,7 +146,9 @@ func (s *SchedulerService) sendDailyDigests() {
 		}
 		tasks, err := s.taskRepo.GetTasksByAssignee(ctx, user.ID, taskFilter)
 		if err != nil {
-			s.logger.Error("Failed to get tasks for daily digest", err, "user_id", user.ID)
+			s.logger.Error("Failed to get tasks for daily digest", err, map[string]interface{}{
+				"user_id": user.ID,
+			})
 			continue
 		}
 
@@ -170,7 +174,9 @@ func (s *SchedulerService) sendDailyDigests() {
 
 		// Сохраняем уведомление
 		if err := s.notificationRepo.Create(ctx, notification); err != nil {
-			s.logger.Error("Failed to create digest notification", err, "user_id", user.ID)
+			s.logger.Error("Failed to create digest notification", err, map[string]interface{}{
+				"user_id": user.ID,
+			})
 			continue
 		}
 
@@ -184,13 +190,15 @@ func (s *SchedulerService) sendDailyDigests() {
 			EntityType: "digest",
 			CreatedAt:  notification.CreatedAt,
 			MetaData: map[string]string{
-				"user_id":   user.ID,
+				"user_id":    user.ID,
 				"task_count": fmt.Sprintf("%d", len(tasks)),
 			},
 		}
 
-		if err := s.producer.PublishNotificationEvent(ctx, messaging.EventTypeNotification, event); err != nil {
-			s.logger.Error("Failed to publish digest notification event", err, "user_id", user.ID)
+		if err := s.producer.PublishNotification(ctx, event); err != nil {
+			s.logger.Error("Failed to publish digest notification event", err, map[string]interface{}{
+				"user_id": user.ID,
+			})
 		}
 	}
 
@@ -207,9 +215,9 @@ func (s *SchedulerService) sendDeadlineReminders() {
 	dayAfter := now.Add(24 * time.Hour)
 
 	filter := repository.TaskFilter{
-		DueBefore:  &dayAfter,
-		DueAfter:   &now,
-		Status:     getTaskStatusPtr(domain.TaskStatusNew, domain.TaskStatusInProgress, domain.TaskStatusOnHold),
+		DueBefore: &dayAfter,
+		DueAfter:  &now,
+		Status:    getTaskStatusPtr(domain.TaskStatusNew, domain.TaskStatusInProgress, domain.TaskStatusOnHold),
 	}
 
 	tasks, err := s.taskRepo.GetUpcomingTasks(ctx, 1, filter) // 1 день
@@ -231,15 +239,17 @@ func (s *SchedulerService) sendDeadlineReminders() {
 		// Проверяем настройки уведомлений
 		settings, err := s.notificationRepo.GetUserNotificationSettings(ctx, assigneeID)
 		if err != nil {
-			s.logger.Error("Failed to get notification settings", err, "user_id", assigneeID)
+			s.logger.Error("Failed to get notification settings", err, map[string]interface{}{
+				"user_id": assigneeID,
+			})
 			continue
 		}
 
 		// Проверяем, включены ли уведомления о дедлайнах
 		dueSoonEnabled := false
 		for _, setting := range settings {
-			if setting.NotificationType == domain.NotificationTypeTaskDueSoon && 
-               (setting.EmailEnabled || setting.WebEnabled) {
+			if setting.NotificationType == domain.NotificationTypeTaskDueSoon &&
+				(setting.EmailEnabled || setting.WebEnabled) {
 				dueSoonEnabled = true
 				break
 			}
@@ -276,7 +286,9 @@ func (s *SchedulerService) sendDeadlineReminders() {
 
 			// Сохраняем уведомление
 			if err := s.notificationRepo.Create(ctx, notification); err != nil {
-				s.logger.Error("Failed to create deadline notification", err, "task_id", task.ID)
+				s.logger.Error("Failed to create deadline notification", err, map[string]interface{}{
+					"task_id": task.ID,
+				})
 				continue
 			}
 
@@ -292,8 +304,10 @@ func (s *SchedulerService) sendDeadlineReminders() {
 				MetaData:   notification.MetaData,
 			}
 
-			if err := s.producer.PublishNotificationEvent(ctx, messaging.EventTypeNotification, event); err != nil {
-				s.logger.Error("Failed to publish deadline notification event", err, "task_id", task.ID)
+			if err := s.producer.PublishNotification(ctx, event); err != nil {
+				s.logger.Error("Failed to publish deadline notification event", err, map[string]interface{}{
+					"task_id": task.ID,
+				})
 			}
 		}
 	}
@@ -332,10 +346,12 @@ func (s *SchedulerService) checkOverdueTasks() {
 			EntityType: getStringPtr("task"),
 			Types:      []domain.NotificationType{domain.NotificationTypeTaskOverdue},
 		}
-		
+
 		existingNotifications, err := s.notificationRepo.GetUserNotifications(ctx, *task.AssigneeID, notificationFilter)
 		if err != nil {
-			s.logger.Error("Failed to check existing notifications", err, "task_id", task.ID)
+			s.logger.Error("Failed to check existing notifications", err, map[string]interface{}{
+				"task_id": task.ID,
+			})
 			continue
 		}
 
@@ -347,15 +363,17 @@ func (s *SchedulerService) checkOverdueTasks() {
 		// Проверяем настройки уведомлений
 		settings, err := s.notificationRepo.GetUserNotificationSettings(ctx, *task.AssigneeID)
 		if err != nil {
-			s.logger.Error("Failed to get notification settings", err, "user_id", *task.AssigneeID)
+			s.logger.Error("Failed to get notification settings", err, map[string]interface{}{
+				"user_id": *task.AssigneeID,
+			})
 			continue
 		}
 
 		// Проверяем, включены ли уведомления о просроченных задачах
 		overdueEnabled := false
 		for _, setting := range settings {
-			if setting.NotificationType == domain.NotificationTypeTaskOverdue && 
-               (setting.EmailEnabled || setting.WebEnabled) {
+			if setting.NotificationType == domain.NotificationTypeTaskOverdue &&
+				(setting.EmailEnabled || setting.WebEnabled) {
 				overdueEnabled = true
 				break
 			}
@@ -367,7 +385,7 @@ func (s *SchedulerService) checkOverdueTasks() {
 
 		// Создаем уведомление
 		content := fmt.Sprintf("Срок выполнения задачи \"%s\" истек", task.Title)
-		
+
 		notification := &domain.Notification{
 			UserID:     *task.AssigneeID,
 			Type:       domain.NotificationTypeTaskOverdue,
@@ -387,7 +405,9 @@ func (s *SchedulerService) checkOverdueTasks() {
 
 		// Сохраняем уведомление
 		if err := s.notificationRepo.Create(ctx, notification); err != nil {
-			s.logger.Error("Failed to create overdue notification", err, "task_id", task.ID)
+			s.logger.Error("Failed to create overdue notification", err, map[string]interface{}{
+				"task_id": task.ID,
+			})
 			continue
 		}
 
@@ -403,8 +423,10 @@ func (s *SchedulerService) checkOverdueTasks() {
 			MetaData:   notification.MetaData,
 		}
 
-		if err := s.producer.PublishNotificationEvent(ctx, messaging.EventTypeNotification, event); err != nil {
-			s.logger.Error("Failed to publish overdue notification event", err, "task_id", task.ID)
+		if err := s.producer.PublishNotification(ctx, event); err != nil {
+			s.logger.Error("Failed to publish overdue notification event", err, map[string]interface{}{
+				"task_id": task.ID,
+			})
 		}
 
 		// Также уведомляем создателя задачи, если это не исполнитель
@@ -428,7 +450,9 @@ func (s *SchedulerService) checkOverdueTasks() {
 			}
 
 			if err := s.notificationRepo.Create(ctx, creatorNotification); err != nil {
-				s.logger.Error("Failed to create creator overdue notification", err, "task_id", task.ID)
+				s.logger.Error("Failed to create creator overdue notification", err, map[string]interface{}{
+					"task_id": task.ID,
+				})
 				continue
 			}
 
@@ -436,8 +460,10 @@ func (s *SchedulerService) checkOverdueTasks() {
 			event.Content = creatorNotification.Content
 			event.MetaData = creatorNotification.MetaData
 
-			if err := s.producer.PublishNotificationEvent(ctx, messaging.EventTypeNotification, event); err != nil {
-				s.logger.Error("Failed to publish creator overdue notification event", err, "task_id", task.ID)
+			if err := s.producer.PublishNotification(ctx, event); err != nil {
+				s.logger.Error("Failed to publish creator overdue notification event", err, map[string]interface{}{
+					"task_id": task.ID,
+				})
 			}
 		}
 	}
@@ -477,7 +503,9 @@ func (s *SchedulerService) archiveCompletedProjects() {
 		}
 		tasks, err := s.taskRepo.GetTasksByProject(ctx, project.ID, taskFilter)
 		if err != nil {
-			s.logger.Error("Failed to get project tasks", err, "project_id", project.ID)
+			s.logger.Error("Failed to get project tasks", err, map[string]interface{}{
+				"project_id": project.ID,
+			})
 			continue
 		}
 
@@ -499,14 +527,18 @@ func (s *SchedulerService) archiveCompletedProjects() {
 		project.UpdatedAt = now
 
 		if err := s.projectRepo.Update(ctx, project); err != nil {
-			s.logger.Error("Failed to archive project", err, "project_id", project.ID)
+			s.logger.Error("Failed to archive project", err, map[string]interface{}{
+				"project_id": project.ID,
+			})
 			continue
 		}
 
 		// Получаем список участников проекта
 		members, err := s.projectRepo.GetMembers(ctx, project.ID)
 		if err != nil {
-			s.logger.Error("Failed to get project members", err, "project_id", project.ID)
+			s.logger.Error("Failed to get project members", err, map[string]interface{}{
+				"project_id": project.ID,
+			})
 			continue
 		}
 
@@ -530,7 +562,9 @@ func (s *SchedulerService) archiveCompletedProjects() {
 			}
 
 			if err := s.notificationRepo.Create(ctx, notification); err != nil {
-				s.logger.Error("Failed to create archive notification", err, "user_id", member.UserID)
+				s.logger.Error("Failed to create archive notification", err, map[string]interface{}{
+					"user_id": member.UserID,
+				})
 				continue
 			}
 
@@ -546,12 +580,18 @@ func (s *SchedulerService) archiveCompletedProjects() {
 				MetaData:   notification.MetaData,
 			}
 
-			if err := s.producer.PublishNotificationEvent(ctx, messaging.EventTypeNotification, event); err != nil {
-				s.logger.Error("Failed to publish archive notification event", err, "user_id", member.UserID)
+			if err := s.producer.PublishNotification(ctx, event); err != nil {
+				s.logger.Error("Failed to publish archive notification event", err, map[string]interface{}{
+					"user_id": member.UserID,
+				})
 			}
 		}
 
-		s.logger.Info("Project archived", "project_id", project.ID, "project_name", project.Name)
+		s.logger.Info("Project archived", map[string]interface{}{
+			"project_id": project.ID,
+		}, map[string]interface{}{
+			"project_name": project.Name,
+		})
 	}
 
 	s.logger.Info("Project archiving task completed")
@@ -561,19 +601,19 @@ func (s *SchedulerService) archiveCompletedProjects() {
 
 func formatDailyDigest(tasks []*domain.Task) string {
 	var dueTodayCount, dueTomorrowCount, overdueCount, inProgressCount int
-	
+
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	tomorrow := today.AddDate(0, 0, 1)
-	
+
 	for _, task := range tasks {
 		if task.Status == domain.TaskStatusInProgress {
 			inProgressCount++
 		}
-		
+
 		if task.DueDate != nil {
 			dueDate := time.Date(task.DueDate.Year(), task.DueDate.Month(), task.DueDate.Day(), 0, 0, 0, 0, task.DueDate.Location())
-			
+
 			if dueDate.Before(today) {
 				overdueCount++
 			} else if dueDate.Equal(today) {
@@ -583,22 +623,22 @@ func formatDailyDigest(tasks []*domain.Task) string {
 			}
 		}
 	}
-	
+
 	// Формируем сообщение
 	digest := fmt.Sprintf("У вас %d активных задач:\n", len(tasks))
 	digest += fmt.Sprintf("- %d в процессе выполнения\n", inProgressCount)
 	digest += fmt.Sprintf("- %d со сроком сегодня\n", dueTodayCount)
 	digest += fmt.Sprintf("- %d со сроком завтра\n", dueTomorrowCount)
 	digest += fmt.Sprintf("- %d просроченных задач\n\n", overdueCount)
-	
+
 	digest += "Задачи на сегодня:\n"
 	for _, task := range tasks {
-		if task.DueDate != nil && task.DueDate.Day() == today.Day() && 
-           task.DueDate.Month() == today.Month() && task.DueDate.Year() == today.Year() {
+		if task.DueDate != nil && task.DueDate.Day() == today.Day() &&
+			task.DueDate.Month() == today.Month() && task.DueDate.Year() == today.Year() {
 			digest += fmt.Sprintf("- %s (приоритет: %s)\n", task.Title, task.Priority)
 		}
 	}
-	
+
 	return digest
 }
 

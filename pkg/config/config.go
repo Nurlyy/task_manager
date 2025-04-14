@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -26,6 +27,7 @@ type Config struct {
 // AppConfig содержит общие настройки приложения
 type AppConfig struct {
 	Name        string
+	Context     context.Context
 	Environment string
 	LogLevel    string
 	Debug       bool
@@ -55,10 +57,10 @@ type DatabaseConfig struct {
 
 // RedisConfig содержит настройки подключения к Redis
 type RedisConfig struct {
-	Host      string
-	Port      string
-	Password  string
-	DB        int
+	Host       string
+	Port       string
+	Password   string
+	DB         int
 	DefaultTTL time.Duration
 }
 
@@ -70,11 +72,11 @@ type KafkaConfig struct {
 
 // KafkaTopics содержит названия топиков Kafka
 type KafkaTopics struct {
-	TaskCreated    string
-	TaskUpdated    string
-	TaskAssigned   string
-	TaskCommented  string
-	Notifications  string
+	TaskCreated   string
+	TaskUpdated   string
+	TaskAssigned  string
+	TaskCommented string
+	Notifications string
 }
 
 // JWTConfig содержит настройки JWT-аутентификации
@@ -93,8 +95,8 @@ type SchedulerConfig struct {
 
 // NotifierConfig содержит настройки для сервиса уведомлений
 type NotifierConfig struct {
-	SMTP      SMTPConfig
-	Telegram  TelegramConfig
+	SMTP     SMTPConfig
+	Telegram TelegramConfig
 }
 
 // SMTPConfig содержит настройки SMTP-сервера для отправки email
@@ -148,20 +150,20 @@ func Load() (*Config, error) {
 			ConnMaxLife:  getEnvAsDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Redis: RedisConfig{
-			Host:      getEnv("REDIS_HOST", "localhost"),
-			Port:      getEnv("REDIS_PORT", "6379"),
-			Password:  getEnv("REDIS_PASSWORD", ""),
-			DB:        getEnvAsInt("REDIS_DB", 0),
+			Host:       getEnv("REDIS_HOST", "localhost"),
+			Port:       getEnv("REDIS_PORT", "6379"),
+			Password:   getEnv("REDIS_PASSWORD", ""),
+			DB:         getEnvAsInt("REDIS_DB", 0),
 			DefaultTTL: getEnvAsDuration("REDIS_DEFAULT_TTL", 24*time.Hour),
 		},
 		Kafka: KafkaConfig{
 			Brokers: strings.Split(getEnv("KAFKA_BROKERS", "localhost:9092"), ","),
 			Topics: KafkaTopics{
-				TaskCreated:    getEnv("KAFKA_TOPIC_TASK_CREATED", "task_created"),
-				TaskUpdated:    getEnv("KAFKA_TOPIC_TASK_UPDATED", "task_updated"),
-				TaskAssigned:   getEnv("KAFKA_TOPIC_TASK_ASSIGNED", "task_assigned"),
-				TaskCommented:  getEnv("KAFKA_TOPIC_TASK_COMMENTED", "task_commented"),
-				Notifications:  getEnv("KAFKA_TOPIC_NOTIFICATIONS", "notifications"),
+				TaskCreated:   getEnv("KAFKA_TOPIC_TASK_CREATED", "task_created"),
+				TaskUpdated:   getEnv("KAFKA_TOPIC_TASK_UPDATED", "task_updated"),
+				TaskAssigned:  getEnv("KAFKA_TOPIC_TASK_ASSIGNED", "task_assigned"),
+				TaskCommented: getEnv("KAFKA_TOPIC_TASK_COMMENTED", "task_commented"),
+				Notifications: getEnv("KAFKA_TOPIC_NOTIFICATIONS", "notifications"),
 			},
 		},
 		JWT: JWTConfig{

@@ -509,10 +509,10 @@ func (s *ProjectService) UpdateMember(ctx context.Context, projectID string, mem
 	}
 
 	// Обновляем роль участника
-	oldRole := member.Role
+	// oldRole := member.Role
 	member.Role = req.Role
 
-	if err := s.projectRepo.UpdateMember(ctx, member); err != nil {
+	if err := s.projectRepo.UpdateMember(ctx, projectID, member.UserID, member.Role); err != nil {
 		s.logger.Error("Failed to update member role", err, map[string]interface{}{
 			"project_id": projectID,
 		}, map[string]interface{}{
@@ -551,7 +551,7 @@ func (s *ProjectService) UpdateMember(ctx context.Context, projectID string, mem
 		Type:        "project_member_updated",
 	}
 
-	if err := s.producer.PublishProjectEvent(ctx, "project_member_updated", event); err != nil {
+	if err := s.producer.PublishProjectMemberAdded(ctx, projectID, project.Name, event); err != nil {
 		s.logger.Warn("Failed to publish project member updated event", map[string]interface{}{
 			"project_id": projectID,
 		}, map[string]interface{}{
@@ -636,7 +636,7 @@ func (s *ProjectService) RemoveMember(ctx context.Context, projectID string, mem
 		Type:        "project_member_removed",
 	}
 
-	if err := s.producer.PublishProjectEvent(ctx, "project_member_removed", event); err != nil {
+	if err := s.producer.PublishProjectMemberRemoved(ctx, event, userID); err != nil {
 		s.logger.Warn("Failed to publish project member removed event", map[string]interface{}{
 			"project_id": projectID,
 		}, map[string]interface{}{
@@ -663,7 +663,9 @@ func (s *ProjectService) TransferOwnership(ctx context.Context, projectID string
 	// Проверяем, является ли текущий пользователь владельцем проекта
 	currentOwner, err := s.projectRepo.GetMember(ctx, projectID, userID)
 	if err != nil || currentOwner.Role != domain.ProjectRoleOwner {
-		s.logger.Warn("User attempted to transfer project ownership without owner rights", "user_id", userID, map[string]interface{}{
+		s.logger.Warn("User attempted to transfer project ownership without owner rights", map[string]interface{}{
+			"user_id": userID,
+		}, map[string]interface{}{
 			"project_id": projectID,
 		})
 		return ErrInsufficientRights
@@ -674,28 +676,34 @@ func (s *ProjectService) TransferOwnership(ctx context.Context, projectID string
 	if err != nil {
 		s.logger.Error("Failed to get new owner as member", err, map[string]interface{}{
 			"project_id": projectID,
-		}, "user_id", newOwnerID)
+		}, map[string]interface{}{
+			"user_id": newOwnerID,
+		})
 		return ErrMemberNotFound
 	}
 
 	// Меняем роль текущего владельца на Manager
 	currentOwner.Role = domain.ProjectRoleManager
-	if err := s.projectRepo.UpdateMember(ctx, currentOwner); err != nil {
+	if err := s.projectRepo.UpdateMember(ctx, projectID, currentOwner.UserID, currentOwner.Role); err != nil {
 		s.logger.Error("Failed to update current owner role", err, map[string]interface{}{
 			"project_id": projectID,
-		}, "user_id", userID)
+		}, map[string]interface{}{
+			"user_id": userID,
+		})
 		return err
 	}
 
 	// Меняем роль нового владельца на Owner
 	newOwner.Role = domain.ProjectRoleOwner
-	if err := s.projectRepo.UpdateMember(ctx, newOwner); err != nil {
+	if err := s.projectRepo.UpdateMember(ctx, projectID, newOwner.UserID, newOwner.Role); err != nil {
 		s.logger.Error("Failed to update new owner role", err, map[string]interface{}{
 			"project_id": projectID,
-		}, "user_id", newOwnerID)
+		}, map[string]interface{}{
+			"user_id": newOwnerID,
+		})
 		// Если не удалось обновить нового владельца, восстанавливаем старого
 		currentOwner.Role = domain.ProjectRoleOwner
-		_ = s.projectRepo.UpdateMember(ctx, currentOwner)
+		_ = s.projectRepo.UpdateMember(ctx, projectID, currentOwner.UserID, currentOwner.Role)
 		return err
 	}
 
@@ -724,7 +732,7 @@ func (s *ProjectService) TransferOwnership(ctx context.Context, projectID string
 		},
 	}
 
-	if err := s.producer.PublishProjectEvent(ctx, "project_ownership_transferred", event); err != nil {
+	if err := s.producer.PublishProjectUpdated(ctx, event, event.Changes); err != nil {
 		s.logger.Warn("Failed to publish ownership transfer event", map[string]interface{}{
 			"project_id": projectID,
 		}, map[string]interface{}{

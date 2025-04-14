@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -70,9 +71,9 @@ func (s *Server) setupRoutes() {
 
 	// Настраиваем Rate Limiter с параметрами из конфигурации
 	rateLimiter := mw.NewRateLimiter(mw.RateLimiterConfig{
-		Limit:    100,              // Ограничение запросов
-		Period:   60,               // Период в секундах
-		Strategy: mw.RateLimitIP,   // Стратегия по IP
+		Limit:    100,            // Ограничение запросов
+		Period:   60,             // Период в секундах
+		Strategy: mw.RateLimitIP, // Стратегия по IP
 	}, nil, s.logger) // nil - без Redis, используем in-memory
 
 	// Запускаем задачу очистки для Rate Limiter
@@ -190,8 +191,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Start запускает HTTP сервер
 func (s *Server) Start() error {
-	s.logger.Info("Starting API server", "port", s.config.HTTP.Port)
-	
+	s.logger.Info("Starting API server", map[string]interface{}{
+		"port": s.config.HTTP.Port,
+	})
+
 	server := &http.Server{
 		Addr:         ":" + s.config.HTTP.Port,
 		Handler:      s.router,
@@ -205,9 +208,9 @@ func (s *Server) Start() error {
 // Shutdown корректно останавливает HTTP сервер
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("Shutting down API server")
-	
+
 	// Здесь можно добавить дополнительную логику для корректного завершения работы
 	// Например, ожидание завершения текущих запросов и т.д.
-	
+
 	return nil
 }

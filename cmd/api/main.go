@@ -2,94 +2,143 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"net/http"
+	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/nurlyy/task_manager/internal/api"
 	"github.com/nurlyy/task_manager/internal/app"
+	"github.com/nurlyy/task_manager/internal/service"
+	"github.com/nurlyy/task_manager/pkg/auth"
 	"github.com/nurlyy/task_manager/pkg/config"
-	"github.com/nurlyy/task_manager/pkg/logger"
+	applogger "github.com/nurlyy/task_manager/pkg/logger"
 )
 
 func main() {
-	// Создаем контекст с возможностью отмены
+	// Инициализируем контекст приложения
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Загружаем конфигурацию
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Printf("Failed to load config: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Инициализируем логгер
-	log := logger.NewLogger(cfg.App.LogLevel, cfg.App.Environment == "production")
-	log.Info("Starting API server", map[string]interface{}{
-		"app_name": cfg.App.Name,
-		"env":      cfg.App.Environment,
-	})
+	// Обновляем контекст приложения в конфигурации
+	cfg.App.Context = ctx
 
-	// Инициализируем приложение
-	application, err := app.NewApplication(ctx, cfg, log)
+	// Инициализируем логгер
+	logger, err := applogger.NewLogger(cfg.App.LogLevel, false)
 	if err != nil {
-		log.Fatal("Failed to initialize application", err)
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+
+	// Инициализируем менеджер JWT
+	jwtManager := auth.NewJWTManager(&cfg.JWT)
+
+	// Инициализируем основное приложение
+	application, err := app.NewApplication(ctx, cfg, logger)
+	if err != nil {
+		logger.Fatal("Failed to initialize application", err)
 	}
 	defer application.Close()
 
-	// Проверяем подключение к базе данных
-	if err := application.DB.PingContext(ctx); err != nil {
-		log.Fatal("Failed to ping database", err)
+	// Инициализируем сервисы
+	services, err := initServices(application, jwtManager)
+	if err != nil {
+		logger.Fatal("Failed to initialize services", err)
 	}
 
-	// TODO: Инициализация маршрутизатора API и HTTP-обработчиков
-	// router := api.NewRouter(application)
+	// Инициализируем API сервер
+	server := api.NewServer(cfg, logger, jwtManager, services)
 
-	// Настройка HTTP-сервера
-	addr := fmt.Sprintf(":%s", cfg.HTTP.Port)
-	srv := &http.Server{
-		Addr:         addr,
-		// Handler:      router,
-		ReadTimeout:  cfg.HTTP.ReadTimeout,
-		WriteTimeout: cfg.HTTP.WriteTimeout,
-		IdleTimeout:  120 * time.Second,
-	}
+	// Создаем канал для перехвата сигналов остановки
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// Запуск сервера в горутине
+	// Запускаем сервер в отдельной горутине
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
-		log.Info("Starting HTTP server", map[string]interface{}{
-			"addr": addr,
-		})
-
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("HTTP server error", err)
-			cancel()
+		defer wg.Done()
+		if err := server.Start(); err != nil {
+			logger.Error("Server error", err)
 		}
 	}()
 
-	// Настройка graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	// Ожидаем сигнала остановки
+	<-stop
+	logger.Info("Shutting down...")
 
-	// Ожидаем сигнал или отмену контекста
-	select {
-	case <-quit:
-		log.Info("Shutting down server...")
-	case <-ctx.Done():
-		log.Info("Shutting down server due to context cancellation...")
-	}
-
-	// Создаем контекст с таймаутом для graceful shutdown
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
+	// Создаем контекст с таймаутом для остановки
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
 	// Останавливаем сервер
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error("Server shutdown error", err)
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Server shutdown error", err)
 	}
 
-	log.Info("Server gracefully stopped")
+	// Ожидаем завершения всех горутин
+	wg.Wait()
+	logger.Info("Server stopped")
+}
+
+// initServices инициализирует все сервисы для API
+func initServices(application *app.Application, jwtManager *auth.JWTManager) (*api.Services, error) {
+	// Инициализация сервисов
+	userService := service.NewUserService(
+		application.Repositories.UserRepository,
+		jwtManager,
+		application.Repositories.CacheRepository,
+		application.Logger,
+	)
+
+	projectService := service.NewProjectService(
+		application.Repositories.ProjectRepository,
+		application.Repositories.UserRepository,
+		application.Repositories.TaskRepository,
+		application.Repositories.CacheRepository,
+		application.Messaging.Producer,
+		application.Logger,
+	)
+
+	taskService := service.NewTaskService(
+		application.Repositories.TaskRepository,
+		application.Repositories.ProjectRepository,
+		application.Repositories.UserRepository,
+		application.Repositories.CommentRepository,
+		application.Repositories.CacheRepository,
+		application.Messaging.Producer,
+		projectService,
+		application.Logger,
+	)
+
+	commentService := service.NewCommentService(
+		application.Repositories.CommentRepository,
+		application.Repositories.TaskRepository,
+		application.Repositories.UserRepository,
+		taskService,
+		application.Messaging.Producer,
+		application.Logger,
+	)
+
+	notificationService := service.NewNotificationService(
+		application.Repositories.NotificationRepository,
+		application.Repositories.UserRepository,
+		application.Repositories.CacheRepository,
+		application.Logger,
+	)
+
+	return &api.Services{
+		UserService:         userService,
+		ProjectService:      projectService,
+		TaskService:         taskService,
+		CommentService:      commentService,
+		NotificationService: notificationService,
+	}, nil
 }

@@ -44,7 +44,7 @@ func (p *KafkaProducer) Close() error {
 }
 
 // PublishTaskCreated публикует событие о создании задачи
-func (p *KafkaProducer) PublishTaskCreated(ctx context.Context, task *domain.Task) error {
+func (p *KafkaProducer) PublishTaskCreated(ctx context.Context, task *TaskEvent) error {
 	event := TaskEvent{
 		ID:          task.ID,
 		Title:       task.Title,
@@ -64,7 +64,7 @@ func (p *KafkaProducer) PublishTaskCreated(ctx context.Context, task *domain.Tas
 }
 
 // PublishTaskUpdated публикует событие об обновлении задачи
-func (p *KafkaProducer) PublishTaskUpdated(ctx context.Context, task *domain.Task, changes map[string]interface{}) error {
+func (p *KafkaProducer) PublishTaskUpdated(ctx context.Context, task *TaskEvent, changes map[string]interface{}) error {
 	event := TaskEvent{
 		ID:         task.ID,
 		Title:      task.Title,
@@ -155,6 +155,21 @@ func (p *KafkaProducer) PublishProjectMemberAdded(ctx context.Context, projectID
 	}
 
 	return p.publishEvent(ctx, p.topics["project_member_added"], fmt.Sprintf("%s-%s", projectID, member.UserID), event)
+}
+
+// PublishProjectMemberRemoved публикует событие об удалении участника проекта
+func (p *KafkaProducer) PublishProjectMemberRemoved(ctx context.Context, member *ProjectMemberEvent, removedBy string) error {
+	event := ProjectMemberEvent{
+		ProjectID:   member.ProjectID,
+		ProjectName: member.ProjectName,
+		UserID:      member.UserID,
+		Role:        member.Role,
+		InvitedBy:   member.InvitedBy,
+		JoinedAt:    member.JoinedAt,
+		Type:        EventTypeProjectMemberRemoved,
+	}
+
+	return p.publishEvent(ctx, p.topics["project_member_removed"], member.UserID, event)
 }
 
 // PublishNotification публикует уведомление

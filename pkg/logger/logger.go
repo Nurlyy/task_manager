@@ -25,11 +25,13 @@ type ZeroLogger struct {
 }
 
 // NewLogger создает новый экземпляр логгера
-func NewLogger(level string, isJSON bool) *ZeroLogger {
+func NewLogger(level string, isJSON bool) (*ZeroLogger, error) {
 	// Настройка уровня логирования
 	logLevel, err := zerolog.ParseLevel(strings.ToLower(level))
 	if err != nil {
 		logLevel = zerolog.InfoLevel
+		// Можно также вернуть ошибку, если считаете нужным
+		// return nil, fmt.Errorf("invalid log level: %s", level)
 	}
 	zerolog.SetGlobalLevel(logLevel)
 
@@ -51,7 +53,7 @@ func NewLogger(level string, isJSON bool) *ZeroLogger {
 
 	return &ZeroLogger{
 		logger: logger,
-	}
+	}, nil
 }
 
 // Debug логирует отладочное сообщение

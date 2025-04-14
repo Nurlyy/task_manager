@@ -10,14 +10,14 @@ import (
 
 	"github.com/nurlyy/task_manager/internal/domain"
 	"github.com/nurlyy/task_manager/internal/repository"
+	"github.com/nurlyy/task_manager/internal/repository/cache"
 	"github.com/nurlyy/task_manager/pkg/auth"
 	"github.com/nurlyy/task_manager/pkg/logger"
-	"github.com/nurlyy/task_manager/internal/repository/cache"
 )
 
 // Стандартные ошибки
 var (
-	ErrUserNotFound      = errors.New("user not found")
+	ErrUserNotFound       = errors.New("user not found")
 	ErrEmailAlreadyExists = errors.New("email already exists")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidPassword    = errors.New("invalid password")
@@ -25,20 +25,20 @@ var (
 
 // UserService представляет бизнес-логику для работы с пользователями
 type UserService struct {
-	repo   repository.UserRepository
+	repo       repository.UserRepository
 	jwtManager *auth.JWTManager
-	logger logger.Logger
-	cacheRepo *cache.RedisRepository
+	logger     logger.Logger
+	cacheRepo  *cache.RedisRepository
 }
 
 // NewUserService создает новый экземпляр UserService
-func NewUserService(repo repository.UserRepository, jwtManager *auth.JWTManager, 
+func NewUserService(repo repository.UserRepository, jwtManager *auth.JWTManager,
 	cacheRepo *cache.RedisRepository, logger logger.Logger) *UserService {
 	return &UserService{
-		repo:   repo,
+		repo:       repo,
 		jwtManager: jwtManager,
-		cacheRepo: cacheRepo,
-		logger: logger,
+		cacheRepo:  cacheRepo,
+		logger:     logger,
 	}
 }
 
@@ -80,8 +80,10 @@ func (s *UserService) Create(ctx context.Context, req domain.UserCreateRequest) 
 		return nil, err
 	}
 
-	// Возвращаем представление пользователя
-	return &user.ToResponse(), nil
+	// Сохраняем результат в переменную
+	response := user.ToResponse()
+	// Возвращаем указатель на переменную
+	return &response, nil
 }
 
 // GetByID возвращает пользователя по ID
@@ -96,14 +98,20 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*domain.UserRespo
 	// Получаем пользователя из БД
 	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get user by ID", err, "id", id)
+		s.logger.Error("Failed to get user by ID", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrUserNotFound
 	}
 
 	// Сохраняем в кэш
 	userResp = user.ToResponse()
 	if err := s.cacheRepo.Set(ctx, cacheKey, userResp); err != nil {
-		s.logger.Warn("Failed to cache user", "id", id, "error", err)
+		s.logger.Warn("Failed to cache user", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return &userResp, nil
@@ -114,11 +122,16 @@ func (s *UserService) GetByEmail(ctx context.Context, email string) (*domain.Use
 	// Получаем пользователя из БД
 	user, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
-		s.logger.Error("Failed to get user by email", err, "email", email)
+		s.logger.Error("Failed to get user by email", err, map[string]interface{}{
+			"email": email,
+		})
 		return nil, ErrUserNotFound
 	}
 
-	return &user.ToResponse(), nil
+	// Сохраняем результат в переменную
+	response := user.ToResponse()
+	// Возвращаем указатель на переменную
+	return &response, nil
 }
 
 // Update обновляет данные пользователя
@@ -126,7 +139,9 @@ func (s *UserService) Update(ctx context.Context, id string, req domain.UserUpda
 	// Получаем пользователя из БД
 	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		s.logger.Error("Failed to get user by ID for update", err, "id", id)
+		s.logger.Error("Failed to get user by ID for update", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, ErrUserNotFound
 	}
 
@@ -157,37 +172,54 @@ func (s *UserService) Update(ctx context.Context, id string, req domain.UserUpda
 
 	// Сохраняем изменения в БД
 	if err := s.repo.Update(ctx, user); err != nil {
-		s.logger.Error("Failed to update user", err, "id", id)
+		s.logger.Error("Failed to update user", err, map[string]interface{}{
+			"id": id,
+		})
 		return nil, err
 	}
 
 	// Удаляем пользователя из кэша
 	cacheKey := "user:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete user from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete user from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
-	return &user.ToResponse(), nil
+	// Сохраняем результат в переменную
+	response := user.ToResponse()
+	// Возвращаем указатель на переменную
+	return &response, nil
 }
 
 // Delete удаляет пользователя
 func (s *UserService) Delete(ctx context.Context, id string) error {
 	// Проверяем, существует ли пользователь
 	if _, err := s.repo.GetByID(ctx, id); err != nil {
-		s.logger.Error("Failed to get user by ID for delete", err, "id", id)
+		s.logger.Error("Failed to get user by ID for delete", err, map[string]interface{}{
+			"id": id,
+		})
 		return ErrUserNotFound
 	}
 
 	// Удаляем пользователя из БД
 	if err := s.repo.Delete(ctx, id); err != nil {
-		s.logger.Error("Failed to delete user", err, "id", id)
+		s.logger.Error("Failed to delete user", err, map[string]interface{}{
+			"id": id,
+		})
 		return err
 	}
 
 	// Удаляем пользователя из кэша
 	cacheKey := "user:" + id
 	if err := s.cacheRepo.Delete(ctx, cacheKey); err != nil {
-		s.logger.Warn("Failed to delete user from cache", "id", id, "error", err)
+		s.logger.Warn("Failed to delete user from cache", map[string]interface{}{
+			"id": id,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	return nil
@@ -234,38 +266,52 @@ func (s *UserService) Login(ctx context.Context, req domain.LoginRequest) (*doma
 	// Получаем пользователя по email
 	user, err := s.repo.GetByEmail(ctx, req.Email)
 	if err != nil {
-		s.logger.Error("User not found during login", err, "email", req.Email)
+		s.logger.Error("User not found during login", err, map[string]interface{}{
+			"email": req.Email,
+		})
 		return nil, ErrInvalidCredentials
 	}
 
 	// Проверяем, активен ли пользователь
 	if !user.IsActive {
-		s.logger.Warn("Inactive user attempted to login", "email", req.Email)
+		s.logger.Warn("Inactive user attempted to login", map[string]interface{}{
+			"email": req.Email,
+		})
 		return nil, ErrInvalidCredentials
 	}
 
 	// Проверяем пароль
 	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(req.Password)); err != nil {
-		s.logger.Warn("Invalid password during login", "email", req.Email)
+		s.logger.Warn("Invalid password during login", map[string]interface{}{
+			"email": req.Email,
+		})
 		return nil, ErrInvalidCredentials
 	}
 
 	// Создаем JWT токены
 	accessToken, refreshToken, err := s.jwtManager.GenerateTokenPair(user.ID, user.Email, string(user.Role))
 	if err != nil {
-		s.logger.Error("Failed to generate tokens", err, "user_id", user.ID)
+		s.logger.Error("Failed to generate tokens", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		return nil, err
 	}
 
 	// Обновляем время последнего входа
 	if err := s.repo.UpdateLastLogin(ctx, user.ID); err != nil {
-		s.logger.Warn("Failed to update last login time", "user_id", user.ID, "error", err)
+		s.logger.Warn("Failed to update last login time", map[string]interface{}{
+			"user_id": user.ID,
+		}, map[string]interface{}{
+			"error": err,
+		})
 	}
 
 	// Получаем дату истечения токена
 	_, expiresAt, err := s.jwtManager.GenerateToken(user.ID, user.Email, string(user.Role), auth.AccessToken)
 	if err != nil {
-		s.logger.Error("Failed to get token expiration", err, "user_id", user.ID)
+		s.logger.Error("Failed to get token expiration", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		return nil, err
 	}
 
@@ -297,14 +343,18 @@ func (s *UserService) RefreshToken(ctx context.Context, req domain.RefreshTokenR
 	// Получаем пользователя
 	user, err := s.repo.GetByID(ctx, claims.UserID)
 	if err != nil {
-		s.logger.Error("User not found during token refresh", err, "user_id", claims.UserID)
+		s.logger.Error("User not found during token refresh", err, map[string]interface{}{
+			"user_id": claims.UserID,
+		})
 		return nil, ErrUserNotFound
 	}
 
 	// Получаем дату истечения токена
 	_, expiresAt, err := s.jwtManager.GenerateToken(user.ID, user.Email, string(user.Role), auth.AccessToken)
 	if err != nil {
-		s.logger.Error("Failed to get token expiration", err, "user_id", user.ID)
+		s.logger.Error("Failed to get token expiration", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
 		return nil, err
 	}
 
@@ -322,13 +372,17 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req dom
 	// Получаем пользователя
 	user, err := s.repo.GetByID(ctx, userID)
 	if err != nil {
-		s.logger.Error("User not found during password change", err, "user_id", userID)
+		s.logger.Error("User not found during password change", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return ErrUserNotFound
 	}
 
 	// Проверяем старый пароль
 	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(req.OldPassword)); err != nil {
-		s.logger.Warn("Invalid old password during password change", "user_id", userID)
+		s.logger.Warn("Invalid old password during password change", map[string]interface{}{
+			"user_id": userID,
+		})
 		return ErrInvalidPassword
 	}
 
@@ -345,7 +399,9 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req dom
 
 	// Сохраняем изменения в БД
 	if err := s.repo.Update(ctx, user); err != nil {
-		s.logger.Error("Failed to update user with new password", err, "user_id", userID)
+		s.logger.Error("Failed to update user with new password", err, map[string]interface{}{
+			"user_id": userID,
+		})
 		return err
 	}
 

@@ -49,19 +49,11 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Обновляем данные проекта
-	project, err := h.projectService.Update(r.Context(), projectID, req, userID)
+	// Создаем проект
+	project, err := h.projectService.Create(r.Context(), req, userID)
 	if err != nil {
-		if errors.Is(err, service.ErrProjectNotFound) {
-			h.RespondWithError(w, r, http.StatusNotFound, "Project not found", "project_not_found")
-			return
-		}
-		if errors.Is(err, service.ErrInsufficientRights) {
-			h.RespondWithError(w, r, http.StatusForbidden, "Insufficient rights to update project", "insufficient_rights")
-			return
-		}
-		h.Logger.Error("Failed to update project", err, "id", projectID)
-		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update project", "update_failed")
+		h.Logger.Error("Failed to create project", err)
+		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to create project", "creation_failed")
 		return
 	}
 
@@ -94,7 +86,9 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Only project owner can delete project", "insufficient_rights")
 			return
 		}
-		h.Logger.Error("Failed to delete project", err, "id", projectID)
+		h.Logger.Error("Failed to delete project", err, map[string]interface{}{
+			"id": projectID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to delete project", "delete_failed")
 		return
 	}
@@ -193,7 +187,9 @@ func (h *ProjectHandler) AddProjectMember(w http.ResponseWriter, r *http.Request
 			h.RespondWithError(w, r, http.StatusConflict, "User is already a member of the project", "member_exists")
 			return
 		}
-		h.Logger.Error("Failed to add member to project", err, "project_id", projectID)
+		h.Logger.Error("Failed to add member to project", err, map[string]interface{}{
+			"project_id": projectID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to add member", "add_member_failed")
 		return
 	}
@@ -256,7 +252,11 @@ func (h *ProjectHandler) UpdateProjectMember(w http.ResponseWriter, r *http.Requ
 			h.RespondWithError(w, r, http.StatusForbidden, "Insufficient rights to update member role", "insufficient_rights")
 			return
 		}
-		h.Logger.Error("Failed to update member role", err, "project_id", projectID, "member_id", memberID)
+		h.Logger.Error("Failed to update member role", err, map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"member_id": memberID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update member role", "update_role_failed")
 		return
 	}
@@ -301,7 +301,11 @@ func (h *ProjectHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Requ
 			h.RespondWithError(w, r, http.StatusForbidden, "Insufficient rights to remove members", "insufficient_rights")
 			return
 		}
-		h.Logger.Error("Failed to remove member from project", err, "project_id", projectID, "member_id", memberID)
+		h.Logger.Error("Failed to remove member from project", err, map[string]interface{}{
+			"project_id": projectID,
+		}, map[string]interface{}{
+			"member_id": memberID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to remove member", "remove_member_failed")
 		return
 	}
@@ -336,12 +340,15 @@ func (h *ProjectHandler) GetProjectMetrics(w http.ResponseWriter, r *http.Reques
 			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the project", "access_denied")
 			return
 		}
-		h.Logger.Error("Failed to get project metrics", err, "id", projectID)
+		h.Logger.Error("Failed to get project metrics", err, map[string]interface{}{
+			"id": projectID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get project metrics", "metrics_fetch_failed")
 		return
 	}
 
-	
+	h.RespondWithSuccess(w, r, metrics)
+}
 
 // GetProject возвращает информацию о проекте по ID
 func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
@@ -370,7 +377,9 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the project", "access_denied")
 			return
 		}
-		h.Logger.Error("Failed to get project", err, "id", projectID)
+		h.Logger.Error("Failed to get project", err, map[string]interface{}{
+			"id": projectID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get project info", "project_fetch_failed")
 		return
 	}
@@ -403,22 +412,31 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 
 	// Валидация запроса
 	if validationErrors, err := h.ValidateRequest(req); err != nil {
-		h.Logger.h.RespondWithSuccess(w, r, metrics)
-	}Error("Request validation error", err)
-			h.RespondWithError(w, r, http.StatusInternalServerError, "Validation failed", "validation_error")
-			return
-		} else if len(validationErrors) > 0 {
-			h.RespondWithValidationErrors(w, r, validationErrors)
-			return
-		}
-
-		// Создаем проект
-		project, err := h.projectService.Create(r.Context(), req, userID)
-		if err != nil {
-			h.Logger.Error("Failed to create project", err)
-			h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to create project", "creation_failed")
-			return
-		}
-
-		h.RespondWithSuccess(w, r, project)
+		h.Logger.Error("Request validation error", err)
+		h.RespondWithError(w, r, http.StatusInternalServerError, "Validation failed", "validation_error")
+		return
+	} else if len(validationErrors) > 0 {
+		h.RespondWithValidationErrors(w, r, validationErrors)
+		return
 	}
+
+	// Обновляем данные проекта
+	project, err := h.projectService.Update(r.Context(), projectID, req, userID)
+	if err != nil {
+		if errors.Is(err, service.ErrProjectNotFound) {
+			h.RespondWithError(w, r, http.StatusNotFound, "Project not found", "project_not_found")
+			return
+		}
+		if errors.Is(err, service.ErrInsufficientRights) {
+			h.RespondWithError(w, r, http.StatusForbidden, "Insufficient rights to update project", "insufficient_rights")
+			return
+		}
+		h.Logger.Error("Failed to update project", err, map[string]interface{}{
+			"id": projectID,
+		})
+		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update project", "update_failed")
+		return
+	}
+
+	h.RespondWithSuccess(w, r, project)
+}

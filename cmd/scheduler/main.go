@@ -29,7 +29,7 @@ func main() {
 	cfg.App.Context = ctx
 
 	// Инициализируем логгер
-	logger, err := applogger.NewLogger(cfg.App.LogLevel, cfg.App.Environment)
+	logger, err := applogger.NewLogger(cfg.App.LogLevel, false)
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}

@@ -5,23 +5,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/segmentio/kafka-go"
 	"github.com/nurlyy/task_manager/pkg/config"
 	"github.com/nurlyy/task_manager/pkg/logger"
+	"github.com/segmentio/kafka-go"
 )
 
 // KafkaProducer представляет клиент для отправки сообщений в Kafka
 type KafkaProducer struct {
-	Writer  *kafka.Writer
-	Config  *config.KafkaConfig
-	Logger  logger.Logger
+	Writer *kafka.Writer
+	Config *config.KafkaConfig
+	Logger logger.Logger
 }
 
 // KafkaConsumer представляет клиент для чтения сообщений из Kafka
 type KafkaConsumer struct {
-	Reader  *kafka.Reader
-	Config  *config.KafkaConfig
-	Logger  logger.Logger
+	Reader *kafka.Reader
+	Config *config.KafkaConfig
+	Logger logger.Logger
 }
 
 // NewKafkaProducer создает нового производителя Kafka
@@ -37,13 +37,12 @@ func NewKafkaProducer(cfg *config.KafkaConfig, log logger.Logger) *KafkaProducer
 		RequiredAcks: kafka.RequireAll,
 		Async:        false,
 		// Настройки для повторных попыток
-		MaxAttempts:   5,
-		RetryBackoff:  time.Millisecond * 250,
+		MaxAttempts: 5,
 		// Настройки для производительности
 		BatchSize:    100,
 		BatchTimeout: time.Millisecond * 10,
 		// Сжатие сообщений
-		CompressionCodec: kafka.Snappy,
+		Compression: kafka.Snappy,
 	}
 
 	return &KafkaProducer{
@@ -100,17 +99,17 @@ func NewKafkaConsumer(topic, groupID string, cfg *config.KafkaConfig, log logger
 		Brokers:        cfg.Brokers,
 		Topic:          topic,
 		GroupID:        groupID,
-		MinBytes:       10e3,    // 10KB
-		MaxBytes:       10e6,    // 10MB
+		MinBytes:       10e3, // 10KB
+		MaxBytes:       10e6, // 10MB
 		MaxWait:        time.Second,
 		StartOffset:    kafka.FirstOffset,
 		CommitInterval: time.Second,
 		RetentionTime:  7 * 24 * time.Hour, // 1 неделя
-		
+
 		// Настройки для повторных попыток и таймаутов
 		ReadBackoffMin: time.Millisecond * 100,
 		ReadBackoffMax: time.Second * 1,
-		
+
 		// Если необходимо использовать TLS
 		// Диагностика производительности
 		ReadLagInterval: time.Minute,

@@ -46,7 +46,9 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusNotFound, "User not found", "user_not_found")
 			return
 		}
-		h.Logger.Error("Failed to get user", err, "id", userID)
+		h.Logger.Error("Failed to get user", err, map[string]interface{}{
+			"user_id": currentUserID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get user info", "user_fetch_failed")
 		return
 	}
@@ -113,7 +115,9 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusNotFound, "User not found", "user_not_found")
 			return
 		}
-		h.Logger.Error("Failed to update user", err, "id", userID)
+		h.Logger.Error("Failed to update user", err, map[string]interface{}{
+			"id": userID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update user", "update_failed")
 		return
 	}
@@ -156,7 +160,9 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusNotFound, "User not found", "user_not_found")
 			return
 		}
-		h.Logger.Error("Failed to delete user", err, "id", userID)
+		h.Logger.Error("Failed to delete user", err, map[string]interface{}{
+			"id": userID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to delete user", "delete_failed")
 		return
 	}

@@ -48,23 +48,15 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Обновляем исполнителя задачи
-	task, err := h.taskService.UpdateAssignee(r.Context(), taskID, req.AssigneeID, userID)
+	// Создаем задачу
+	task, err := h.taskService.Create(r.Context(), req, userID)
 	if err != nil {
-		if errors.Is(err, service.ErrTaskNotFound) {
-			h.RespondWithError(w, r, http.StatusNotFound, "Task not found", "task_not_found")
+		if errors.Is(err, service.ErrProjectNotFound) {
+			h.RespondWithError(w, r, http.StatusNotFound, "Project not found", "project_not_found")
 			return
 		}
-		if errors.Is(err, service.ErrTaskAccessDenied) {
-			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the task", "access_denied")
-			return
-		}
-		if errors.Is(err, service.ErrInsufficientRights) {
-			h.RespondWithError(w, r, http.StatusForbidden, "Insufficient rights to update task assignee", "insufficient_rights")
-			return
-		}
-		h.Logger.Error("Failed to update task assignee", err, "id", taskID)
-		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update task assignee", "assignee_update_failed")
+		h.Logger.Error("Failed to create task", err)
+		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to create task", "creation_failed")
 		return
 	}
 
@@ -114,7 +106,9 @@ func (h *TaskHandler) LogTime(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the task", "access_denied")
 			return
 		}
-		h.Logger.Error("Failed to log time", err, "task_id", taskID)
+		h.Logger.Error("Failed to log time", err, map[string]interface{}{
+			"task_id": taskID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to log time", "log_time_failed")
 		return
 	}
@@ -149,14 +143,15 @@ func (h *TaskHandler) GetTimeLogs(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the task", "access_denied")
 			return
 		}
-		h.Logger.Error("Failed to get time logs", err, "task_id", taskID)
+		h.Logger.Error("Failed to get time logs", err, map[string]interface{}{
+			"task_id": taskID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get time logs", "time_logs_fetch_failed")
 		return
 	}
 
 	h.RespondWithSuccess(w, r, timeLogs)
 }
-	
 
 // GetTask возвращает информацию о задаче по ID
 func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +180,9 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the task", "access_denied")
 			return
 		}
-		h.Logger.Error("Failed to get task", err, "id", taskID)
+		h.Logger.Error("Failed to get task", err, map[string]interface{}{
+			"id": taskID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to get task info", "task_fetch_failed")
 		return
 	}
@@ -241,7 +238,9 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Insufficient rights to update task", "insufficient_rights")
 			return
 		}
-		h.Logger.Error("Failed to update task", err, "id", taskID)
+		h.Logger.Error("Failed to update task", err, map[string]interface{}{
+			"id": taskID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update task", "update_failed")
 		return
 	}
@@ -275,7 +274,9 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusForbidden, "Insufficient rights to delete task", "insufficient_rights")
 			return
 		}
-		h.Logger.Error("Failed to delete task", err, "id", taskID)
+		h.Logger.Error("Failed to delete task", err, map[string]interface{}{
+			"id": taskID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to delete task", "delete_failed")
 		return
 	}
@@ -417,7 +418,9 @@ func (h *TaskHandler) UpdateTaskStatus(w http.ResponseWriter, r *http.Request) {
 			h.RespondWithError(w, r, http.StatusBadRequest, "Invalid status transition", "invalid_status")
 			return
 		}
-		h.Logger.Error("Failed to update task status", err, "id", taskID)
+		h.Logger.Error("Failed to update task status", err, map[string]interface{}{
+			"id": taskID,
+		})
 		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update task status", "status_update_failed")
 		return
 	}
@@ -461,15 +464,25 @@ func (h *TaskHandler) UpdateTaskAssignee(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Создаем задачу
-	task, err := h.taskService.Create(r.Context(), req, userID)
+	// Обновляем исполнителя задачи
+	task, err := h.taskService.UpdateAssignee(r.Context(), taskID, req.AssigneeID, userID)
 	if err != nil {
-		if errors.Is(err, service.ErrProjectNotFound) {
-			h.RespondWithError(w, r, http.StatusNotFound, "Project not found", "project_not_found")
+		if errors.Is(err, service.ErrTaskNotFound) {
+			h.RespondWithError(w, r, http.StatusNotFound, "Task not found", "task_not_found")
 			return
 		}
-		h.Logger.Error("Failed to create task", err)
-		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to create task", "creation_failed")
+		if errors.Is(err, service.ErrTaskAccessDenied) {
+			h.RespondWithError(w, r, http.StatusForbidden, "Access denied to the task", "access_denied")
+			return
+		}
+		if errors.Is(err, service.ErrInsufficientRights) {
+			h.RespondWithError(w, r, http.StatusForbidden, "Insufficient rights to update task assignee", "insufficient_rights")
+			return
+		}
+		h.Logger.Error("Failed to update task assignee", err, map[string]interface{}{
+			"id": taskID,
+		})
+		h.RespondWithError(w, r, http.StatusInternalServerError, "Failed to update task assignee", "assignee_update_failed")
 		return
 	}
 
