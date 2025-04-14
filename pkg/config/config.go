@@ -22,6 +22,7 @@ type Config struct {
 	Scheduler  SchedulerConfig
 	Notifier   NotifierConfig
 	Monitoring MonitoringConfig
+	Telegram   TelegramConfig
 }
 
 // AppConfig содержит общие настройки приложения
@@ -110,7 +111,8 @@ type SMTPConfig struct {
 
 // TelegramConfig содержит настройки для уведомлений через Telegram
 type TelegramConfig struct {
-	Token string
+	Token      string `json:"token" yaml:"token" env:"TELEGRAM_TOKEN"`
+	WebhookURL string `json:"webhook_url" yaml:"webhook_url" env:"TELEGRAM_WEBHOOK_URL"`
 }
 
 // MonitoringConfig содержит настройки мониторинга

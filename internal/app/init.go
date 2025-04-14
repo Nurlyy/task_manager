@@ -123,6 +123,7 @@ func initRepositories(db *sqlx.DB, redis *redisClient.Redis, log logger.Logger, 
 	taskRepo := postgres.NewTaskRepository(db, log)
 	commentRepo := postgres.NewCommentRepository(db, log)
 	notificationRepo := postgres.NewNotificationRepository(db, log)
+	telegramRepo := postgres.NewTelegramRepository(db, log)
 
 	// Инициализация Redis репозитория
 	cacheRepo := cache.NewRedisRepository(redis.Client, log, cfg.Redis.DefaultTTL)
@@ -134,6 +135,7 @@ func initRepositories(db *sqlx.DB, redis *redisClient.Redis, log logger.Logger, 
 		CommentRepository:      commentRepo,
 		NotificationRepository: notificationRepo,
 		CacheRepository:        cacheRepo,
+		TelegramRepository:     telegramRepo,
 	}, nil
 }
 

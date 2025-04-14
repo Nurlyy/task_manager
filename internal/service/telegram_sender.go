@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,6 +22,7 @@ type TelegramSender struct {
 	client       *http.Client
 	logger       logger.Logger
 	telegramRepo repository.TelegramRepository
+	botUsername  string
 }
 
 // TelegramResponse представляет ответ от Telegram API
@@ -28,6 +30,14 @@ type TelegramResponse struct {
 	Ok          bool            `json:"ok"`
 	Description string          `json:"description,omitempty"`
 	Result      json.RawMessage `json:"result,omitempty"`
+}
+
+// TelegramUser представляет информацию о пользователе Telegram
+type TelegramUser struct {
+	ID        int    `json:"id"`
+	IsBot     bool   `json:"is_bot"`
+	FirstName string `json:"first_name"`
+	Username  string `json:"username"`
 }
 
 // NewTelegramSender создает новый экземпляр TelegramSender
@@ -41,13 +51,97 @@ func NewTelegramSender(
 		Timeout: 10 * time.Second,
 	}
 
-	return &TelegramSender{
+	sender := &TelegramSender{
 		botToken:     botToken,
 		apiBaseURL:   "https://api.telegram.org/bot",
 		client:       client,
 		logger:       logger,
 		telegramRepo: telegramRepo,
 	}
+
+	// Получаем информацию о боте
+	sender.fetchBotInfo()
+
+	return sender
+}
+
+// fetchBotInfo получает информацию о боте из Telegram API
+func (s *TelegramSender) fetchBotInfo() {
+	apiURL := fmt.Sprintf("%s%s/getMe", s.apiBaseURL, s.botToken)
+
+	resp, err := s.client.Get(apiURL)
+	if err != nil {
+		s.logger.Error("Failed to get bot info", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var telegramResp TelegramResponse
+	if err := json.NewDecoder(resp.Body).Decode(&telegramResp); err != nil {
+		s.logger.Error("Failed to decode bot info response", err)
+		return
+	}
+
+	if !telegramResp.Ok {
+		s.logger.Error("Telegram API returned error", fmt.Errorf(telegramResp.Description))
+		return
+	}
+
+	var botInfo TelegramUser
+	if err := json.Unmarshal(telegramResp.Result, &botInfo); err != nil {
+		s.logger.Error("Failed to unmarshal bot info", err)
+		return
+	}
+
+	s.botUsername = botInfo.Username
+	s.logger.Info("Bot info fetched successfully", map[string]interface{}{
+		"username": botInfo.Username,
+	})
+}
+
+// SetupWebhook настраивает webhook для Telegram бота
+func (s *TelegramSender) SetupWebhook(webhookURL string) error {
+	apiURL := fmt.Sprintf("%s%s/setWebhook", s.apiBaseURL, s.botToken)
+
+	// Формируем данные запроса
+	data := url.Values{}
+	data.Set("url", webhookURL)
+	data.Set("allowed_updates", `["message"]`)
+
+	// Отправляем POST-запрос
+	resp, err := s.client.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return fmt.Errorf("post request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Проверяем статус ответа
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("telegram API returned non-OK status: %s, body: %s", resp.Status, string(body))
+	}
+
+	// Разбираем ответ
+	var telegramResp TelegramResponse
+	if err := json.NewDecoder(resp.Body).Decode(&telegramResp); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Проверяем успешность операции
+	if !telegramResp.Ok {
+		return fmt.Errorf("telegram API returned error: %s", telegramResp.Description)
+	}
+
+	s.logger.Info("Webhook setup successfully", map[string]interface{}{
+		"webhook_url": webhookURL,
+	})
+
+	return nil
+}
+
+// GetBotUsername возвращает имя пользователя бота
+func (s *TelegramSender) GetBotUsername() string {
+	return s.botUsername
 }
 
 // SendNotification отправляет уведомление в Telegram
@@ -62,8 +156,46 @@ func (s *TelegramSender) SendNotification(ctx context.Context, user *domain.User
 	message := s.formatMessage(notification, user)
 
 	// Отправляем сообщение
-	if err := s.sendMessage(telegramLink.ChatID, message); err != nil {
+	if err := s.SendMessage(telegramLink.ChatID, message); err != nil {
 		return fmt.Errorf("failed to send Telegram message: %w", err)
+	}
+
+	return nil
+}
+
+// SendMessage отправляет сообщение в Telegram
+func (s *TelegramSender) SendMessage(telegramID, message string) error {
+	// Формируем URL для отправки сообщения
+	apiURL := fmt.Sprintf("%s%s/sendMessage", s.apiBaseURL, s.botToken)
+
+	// Формируем данные запроса
+	data := url.Values{}
+	data.Set("chat_id", telegramID)
+	data.Set("text", message)
+	data.Set("parse_mode", "Markdown")
+
+	// Отправляем POST-запрос
+	resp, err := s.client.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	if err != nil {
+		return fmt.Errorf("post request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Проверяем статус ответа
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("telegram API returned non-OK status: %s, body: %s", resp.Status, string(body))
+	}
+
+	// Разбираем ответ
+	var telegramResp TelegramResponse
+	if err := json.NewDecoder(resp.Body).Decode(&telegramResp); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Проверяем успешность операции
+	if !telegramResp.Ok {
+		return fmt.Errorf("telegram API returned error: %s", telegramResp.Description)
 	}
 
 	return nil
@@ -178,43 +310,6 @@ func (s *TelegramSender) formatMessage(notification *domain.Notification, user *
 	message += fmt.Sprintf("\n\n_Отправлено: %s_", notification.CreatedAt.Format("02.01.2006 15:04"))
 
 	return message
-}
-
-// sendMessage отправляет сообщение в Telegram
-func (s *TelegramSender) sendMessage(telegramID, message string) error {
-	// Формируем URL для отправки сообщения
-	apiURL := fmt.Sprintf("%s%s/sendMessage", s.apiBaseURL, s.botToken)
-
-	// Формируем данные запроса
-	data := url.Values{}
-	data.Set("chat_id", telegramID)
-	data.Set("text", message)
-	data.Set("parse_mode", "Markdown")
-
-	// Отправляем POST-запрос
-	resp, err := s.client.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
-	if err != nil {
-		return fmt.Errorf("post request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Проверяем статус ответа
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram API returned non-OK status: %s", resp.Status)
-	}
-
-	// Разбираем ответ
-	var telegramResp TelegramResponse
-	if err := json.NewDecoder(resp.Body).Decode(&telegramResp); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	// Проверяем успешность операции
-	if !telegramResp.Ok {
-		return fmt.Errorf("telegram API returned error: %s", telegramResp.Description)
-	}
-
-	return nil
 }
 
 // escapeMarkdown экранирует специальные символы Markdown

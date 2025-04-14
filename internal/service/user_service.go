@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/google/uuid"
@@ -406,4 +408,46 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req dom
 	}
 
 	return nil
+}
+
+// GenerateTelegramToken генерирует токен для связывания аккаунта с Telegram
+func (s *UserService) GenerateTelegramToken(ctx context.Context, userID string) (string, error) {
+	// Генерируем случайный токен
+	token := generateRandomToken(32)
+
+	// Сохраняем токен в кеше Redis с указанием ID пользователя
+	key := fmt.Sprintf("telegram:token:%s", token)
+	err := s.cacheRepo.SetNew(ctx, key, userID, 24*time.Hour) // Токен действителен 24 часа
+	if err != nil {
+		return "", fmt.Errorf("failed to save token: %w", err)
+	}
+
+	return token, nil
+}
+
+// GetUserIDByToken получает ID пользователя по токену для Telegram
+func (s *UserService) GetUserIDByToken(ctx context.Context, token string) (string, error) {
+	// Получаем ID пользователя из кеша Redis
+	key := fmt.Sprintf("telegram:token:%s", token)
+	userID, err := s.cacheRepo.GetNew(ctx, key)
+	if err != nil {
+		return "", fmt.Errorf("invalid or expired token: %w", err)
+	}
+
+	// Удаляем токен после использования
+	if err := s.cacheRepo.DeleteNew(ctx, key); err != nil {
+		// s.logger.Warn("Failed to delete used token", err)
+	}
+
+	return userID, nil
+}
+
+// generateRandomToken генерирует случайный токен указанной длины
+func generateRandomToken(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }

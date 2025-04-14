@@ -211,3 +211,61 @@ func getErrorMsg(err validator.FieldError) string {
 		return fmt.Sprintf("Validation failed on '%s' with value '%v'", err.Tag(), err.Value())
 	}
 }
+
+// HandleError обрабатывает ошибки и отправляет соответствующий ответ
+func (h *BaseHandler) HandleError(w http.ResponseWriter, r *http.Request, err error, statusCode int) {
+	h.Logger.Error("Request error", err)
+
+	// Определяем сообщение об ошибке и код
+	errorMessage := err.Error()
+	errorCode := "internal_error"
+
+	// Пытаемся определить тип ошибки
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		statusCode = http.StatusNotFound
+		errorCode = "not_found"
+	case errors.Is(err, domain.ErrInvalidInput):
+		statusCode = http.StatusBadRequest
+		errorCode = "invalid_input"
+	case errors.Is(err, domain.ErrUnauthorized):
+		statusCode = http.StatusUnauthorized
+		errorCode = "unauthorized"
+	case errors.Is(err, domain.ErrForbidden):
+		statusCode = http.StatusForbidden
+		errorCode = "forbidden"
+	}
+
+	h.RespondWithError(w, r, statusCode, errorMessage, errorCode)
+}
+
+// GetCurrentUser получает текущего пользователя из контекста запроса
+func (h *BaseHandler) GetCurrentUser(r *http.Request) (*domain.User, error) {
+	userID, err := h.GetUserIDFromContext(r)
+	if err != nil {
+		return nil, domain.ErrUnauthorized
+	}
+
+	// Получаем данные пользователя из контекста, если они там есть
+	if user, ok := r.Context().Value("user").(*domain.User); ok && user.ID == userID {
+		return user, nil
+	}
+
+	// Если в контексте нет полных данных о пользователе, возвращаем базовую информацию
+	return &domain.User{
+		ID: userID,
+	}, nil
+}
+
+// RespondJSON отправляет JSON-ответ
+func (h *BaseHandler) RespondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	if data != nil {
+		if err := json.NewEncoder(w).Encode(data); err != nil {
+			h.Logger.Error("Failed to encode response", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}

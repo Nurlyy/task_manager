@@ -364,3 +364,25 @@ func (r *RedisRepository) Set(ctx context.Context, key string, value interface{}
 
 	return nil
 }
+
+// Set устанавливает значение по ключу с указанным временем жизни
+func (r *RedisRepository) SetNew(ctx context.Context, key string, value string, ttl time.Duration) error {
+	return r.client.Set(ctx, key, value, ttl).Err()
+}
+
+// Get получает значение по ключу
+func (r *RedisRepository) GetNew(ctx context.Context, key string) (string, error) {
+	val, err := r.client.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return "", fmt.Errorf("key not found: %s", key)
+		}
+		return "", err
+	}
+	return val, nil
+}
+
+// Delete удаляет значение по ключу
+func (r *RedisRepository) DeleteNew(ctx context.Context, key string) error {
+	return r.client.Del(ctx, key).Err()
+}

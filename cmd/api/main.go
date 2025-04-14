@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -91,6 +92,22 @@ func main() {
 // initServices инициализирует все сервисы для API
 func initServices(application *app.Application, jwtManager *auth.JWTManager) (*api.Services, error) {
 	// Инициализация сервисов
+
+	telegramSender := service.NewTelegramSender(
+		application.Config.Telegram.Token,
+		app.Repositories.TelegramRepository,
+		app.Logger,
+	)
+
+	// Настраиваем webhook для Telegram
+	webhookURL := fmt.Sprintf("%s/api/v1/webhook/telegram", app.Config.App.BaseURL)
+	if err := telegramSender.SetupWebhook(webhookURL); err != nil {
+		app.Logger.Warn("Failed to setup Telegram webhook", map[string]interface{}{
+			"error": err.Error(),
+		})
+		// Продолжаем работу даже при ошибке настройки webhook
+	}
+
 	userService := service.NewUserService(
 		application.Repositories.UserRepository,
 		jwtManager,

@@ -11,6 +11,7 @@ import (
 
 	"github.com/nurlyy/task_manager/internal/api/handlers"
 	mw "github.com/nurlyy/task_manager/internal/api/middleware"
+	"github.com/nurlyy/task_manager/internal/repository"
 	"github.com/nurlyy/task_manager/internal/service"
 	"github.com/nurlyy/task_manager/pkg/auth"
 	"github.com/nurlyy/task_manager/pkg/config"
@@ -19,12 +20,13 @@ import (
 
 // Server представляет HTTP сервер API
 type Server struct {
-	router      chi.Router
-	logger      logger.Logger
-	config      *config.Config
-	jwtManager  *auth.JWTManager
-	baseHandler handlers.BaseHandler
-	services    *Services
+	router       chi.Router
+	logger       logger.Logger
+	config       *config.Config
+	jwtManager   *auth.JWTManager
+	baseHandler  handlers.BaseHandler
+	services     *Services
+	repositories *Repositories
 }
 
 // Services содержит все сервисы для обработчиков API
@@ -34,6 +36,11 @@ type Services struct {
 	TaskService         *service.TaskService
 	CommentService      *service.CommentService
 	NotificationService *service.NotificationService
+	TelegramService     *service.TelegramSender
+}
+
+type Repositories struct {
+	TelegramRepository repository.TelegramRepository
 }
 
 // NewServer создает новый экземпляр сервера API
@@ -64,6 +71,13 @@ func (s *Server) setupRoutes() {
 	taskHandler := handlers.NewTaskHandler(s.baseHandler, s.services.TaskService)
 	commentHandler := handlers.NewCommentHandler(s.baseHandler, s.services.CommentService)
 	notificationHandler := handlers.NewNotificationHandler(s.baseHandler, s.services.NotificationService)
+
+	telegramHandler := handlers.NewTelegramHandler(
+		s.baseHandler,
+		s.repositories.TelegramRepository, // Предполагается, что поле есть или будет добавлено
+		s.services.TelegramService,        // Необходимо добавить в структуру Services
+		s.services.UserService,
+	)
 
 	// Инициализируем middleware
 	authMiddleware := mw.NewAuthMiddleware(s.jwtManager, s.logger)
@@ -110,6 +124,7 @@ func (s *Server) setupRoutes() {
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
 			r.Post("/auth/refresh", authHandler.RefreshToken)
+			r.Post("/webhook/telegram", telegramHandler.WebhookHandler)
 		})
 
 		// Защищенные маршруты (требуют аутентификации)
@@ -179,6 +194,13 @@ func (s *Server) setupRoutes() {
 				r.Delete("/{id}", notificationHandler.DeleteNotification)
 				r.Get("/settings", notificationHandler.GetNotificationSettings)
 				r.Put("/settings", notificationHandler.UpdateNotificationSettings)
+			})
+
+			// Маршруты для Telegram
+			r.Route("/telegram", func(r chi.Router) {
+				r.Get("/status", telegramHandler.GetTelegramStatus)
+				r.Post("/connect", telegramHandler.GenerateConnectToken)
+				r.Delete("/disconnect", telegramHandler.DisconnectTelegram)
 			})
 		})
 	})
