@@ -54,8 +54,12 @@ func main() {
 		logger.Fatal("Failed to initialize services", err)
 	}
 
+	repositories := &api.Repositories{
+		TelegramRepository: application.Repositories.TelegramRepository,
+	}
+
 	// Инициализируем API сервер
-	server := api.NewServer(cfg, logger, jwtManager, services)
+	server := api.NewServer(cfg, logger, jwtManager, services, repositories)
 
 	// Создаем канал для перехвата сигналов остановки
 	stop := make(chan os.Signal, 1)
@@ -92,17 +96,18 @@ func main() {
 // initServices инициализирует все сервисы для API
 func initServices(application *app.Application, jwtManager *auth.JWTManager) (*api.Services, error) {
 	// Инициализация сервисов
-
+	application.Logger.Info("THERE SHOULD BE TOKEN: ")
+	application.Logger.Info(application.Config.Telegram.Token)
 	telegramSender := service.NewTelegramSender(
 		application.Config.Telegram.Token,
-		app.Repositories.TelegramRepository,
-		app.Logger,
+		application.Repositories.TelegramRepository,
+		application.Logger,
 	)
 
 	// Настраиваем webhook для Telegram
-	webhookURL := fmt.Sprintf("%s/api/v1/webhook/telegram", app.Config.App.BaseURL)
+	webhookURL := fmt.Sprintf("%s/api/v1/webhook/telegram", application.Config.App.BaseURL)
 	if err := telegramSender.SetupWebhook(webhookURL); err != nil {
-		app.Logger.Warn("Failed to setup Telegram webhook", map[string]interface{}{
+		application.Logger.Warn("Failed to setup Telegram webhook", map[string]interface{}{
 			"error": err.Error(),
 		})
 		// Продолжаем работу даже при ошибке настройки webhook
@@ -157,5 +162,6 @@ func initServices(application *app.Application, jwtManager *auth.JWTManager) (*a
 		TaskService:         taskService,
 		CommentService:      commentService,
 		NotificationService: notificationService,
+		TelegramService:     telegramSender,
 	}, nil
 }

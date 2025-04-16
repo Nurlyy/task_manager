@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/nurlyy/task_manager/internal/domain"
 	"github.com/nurlyy/task_manager/internal/messaging"
 	"github.com/nurlyy/task_manager/internal/repository"
@@ -156,6 +158,7 @@ func (s *NotifierService) processNotificationEvent(ctx context.Context, data []b
 
 		// Формируем уведомление
 		notification := &domain.Notification{
+			ID:         uuid.New().String(),
 			UserID:     userID,
 			Type:       notificationType,
 			Title:      event.Title,

@@ -156,6 +156,17 @@ func initMessaging(cfg *config.Config, log logger.Logger) (*Messaging, error) {
 	// Инициализация Kafka продюсера
 	producer := messaging.NewKafkaProducer(cfg.Kafka.Brokers, topics, log)
 
+	// Создание топиков
+	allTopicsValues := make([]string, 0, len(topics))
+	for _, topic := range topics {
+		allTopicsValues = append(allTopicsValues, topic)
+	}
+	if err := producer.EnsureTopicsExist(context.Background(), allTopicsValues); err != nil {
+		log.Warn("Failed to create Kafka topics", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
 	return &Messaging{
 		Producer: producer,
 	}, nil

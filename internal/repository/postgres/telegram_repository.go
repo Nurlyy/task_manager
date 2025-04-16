@@ -28,7 +28,7 @@ func NewTelegramRepository(db *sqlx.DB, logger logger.Logger) *TelegramRepositor
 // CreateOrUpdate создает или обновляет связь пользователя с Telegram
 func (r *TelegramRepository) CreateOrUpdate(ctx context.Context, link *repository.TelegramLink) error {
 	query := `
-		INSERT INTO telegram_links (
+		INSERT INTO user_telegram_links (
 			user_id, telegram_id, chat_id, username, first_name, last_name, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8
@@ -80,7 +80,7 @@ func (r *TelegramRepository) GetByUserID(ctx context.Context, userID string) (*r
 	query := `
 		SELECT 
 			user_id, telegram_id, chat_id, username, first_name, last_name, created_at, updated_at
-		FROM telegram_links 
+		FROM user_telegram_links 
 		WHERE user_id = $1
 	`
 
@@ -104,7 +104,7 @@ func (r *TelegramRepository) GetByTelegramID(ctx context.Context, telegramID str
 	query := `
 		SELECT 
 			user_id, telegram_id, chat_id, username, first_name, last_name, created_at, updated_at
-		FROM telegram_links 
+		FROM user_telegram_links 
 		WHERE telegram_id = $1
 	`
 
@@ -125,7 +125,7 @@ func (r *TelegramRepository) GetByTelegramID(ctx context.Context, telegramID str
 
 // Delete удаляет связь пользователя с Telegram
 func (r *TelegramRepository) Delete(ctx context.Context, userID string) error {
-	query := `DELETE FROM telegram_links WHERE user_id = $1`
+	query := `DELETE FROM user_telegram_links WHERE user_id = $1`
 
 	result, err := r.db.ExecContext(ctx, query, userID)
 	if err != nil {
@@ -152,7 +152,7 @@ func (r *TelegramRepository) List(ctx context.Context, limit, offset int) ([]*re
 	query := `
 		SELECT 
 			user_id, telegram_id, chat_id, username, first_name, last_name, created_at, updated_at
-		FROM telegram_links
+		FROM user_telegram_links
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
 	`
@@ -172,7 +172,7 @@ func (r *TelegramRepository) List(ctx context.Context, limit, offset int) ([]*re
 
 // Count возвращает количество связей пользователей с Telegram
 func (r *TelegramRepository) Count(ctx context.Context) (int, error) {
-	query := `SELECT COUNT(*) FROM telegram_links`
+	query := `SELECT COUNT(*) FROM user_telegram_links`
 
 	var count int
 	err := r.db.GetContext(ctx, &count, query)

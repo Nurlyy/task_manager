@@ -177,6 +177,52 @@ func (p *KafkaProducer) PublishNotification(ctx context.Context, notification *N
 	return p.publishEvent(ctx, p.topics["notifications"], notification.EntityID, notification)
 }
 
+// AddEnsureTopicsMethod добавьте этот метод в файл с KafkaProducer
+func (p *KafkaProducer) EnsureTopicsExist(ctx context.Context, topics []string) error {
+	p.logger.Info("Creating Kafka topics", map[string]interface{}{
+		"topics": topics,
+	})
+
+	conn, err := kafka.DialContext(ctx, "tcp", p.writer.Addr.String())
+	if err != nil {
+		return fmt.Errorf("failed to connect to Kafka: %w", err)
+	}
+	defer conn.Close()
+
+	controller, err := conn.Controller()
+	if err != nil {
+		return fmt.Errorf("failed to get Kafka controller: %w", err)
+	}
+
+	controllerConn, err := kafka.DialContext(ctx, "tcp", controller.Host)
+	if err != nil {
+		return fmt.Errorf("failed to connect to Kafka controller: %w", err)
+	}
+	defer controllerConn.Close()
+
+	topicConfigs := make([]kafka.TopicConfig, 0, len(topics))
+	for _, topic := range topics {
+		topicConfigs = append(topicConfigs, kafka.TopicConfig{
+			Topic:             topic,
+			NumPartitions:     3,
+			ReplicationFactor: 1,
+		})
+	}
+
+	err = controllerConn.CreateTopics(topicConfigs...)
+	if err != nil {
+		p.logger.Error("Failed to create Kafka topics", err, map[string]interface{}{
+			"topics": topics,
+		})
+		return fmt.Errorf("failed to create Kafka topics: %w", err)
+	}
+
+	p.logger.Info("Kafka topics created successfully", map[string]interface{}{
+		"topics": topics,
+	})
+	return nil
+}
+
 // Вспомогательный метод для публикации событий
 
 func (p *KafkaProducer) publishEvent(ctx context.Context, topic, key string, event interface{}) error {

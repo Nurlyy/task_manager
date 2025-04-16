@@ -44,16 +44,17 @@ type Repositories struct {
 }
 
 // NewServer создает новый экземпляр сервера API
-func NewServer(config *config.Config, logger logger.Logger, jwtManager *auth.JWTManager, services *Services) *Server {
+func NewServer(config *config.Config, logger logger.Logger, jwtManager *auth.JWTManager, services *Services, repositories *Repositories) *Server {
 	baseHandler := handlers.NewBaseHandler(logger, jwtManager)
 
 	server := &Server{
-		router:      chi.NewRouter(),
-		logger:      logger,
-		config:      config,
-		jwtManager:  jwtManager,
-		baseHandler: baseHandler,
-		services:    services,
+		router:       chi.NewRouter(),
+		logger:       logger,
+		config:       config,
+		jwtManager:   jwtManager,
+		baseHandler:  baseHandler,
+		services:     services,
+		repositories: repositories,
 	}
 
 	// Настраиваем маршрутизацию
@@ -74,8 +75,8 @@ func (s *Server) setupRoutes() {
 
 	telegramHandler := handlers.NewTelegramHandler(
 		s.baseHandler,
-		s.repositories.TelegramRepository, // Предполагается, что поле есть или будет добавлено
-		s.services.TelegramService,        // Необходимо добавить в структуру Services
+		s.repositories.TelegramRepository,
+		s.services.TelegramService,
 		s.services.UserService,
 	)
 
@@ -124,7 +125,7 @@ func (s *Server) setupRoutes() {
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
 			r.Post("/auth/refresh", authHandler.RefreshToken)
-			r.Post("/webhook/telegram", telegramHandler.WebhookHandler)
+			// r.Post("/webhook/telegram", telegramHandler.WebhookHandler)
 		})
 
 		// Защищенные маршруты (требуют аутентификации)

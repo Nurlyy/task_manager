@@ -408,8 +408,22 @@ func (s *ProjectService) AddMember(ctx context.Context, projectID string, req do
 	}
 
 	// Проверяем, не является ли пользователь уже участником проекта
-	_, err = s.projectRepo.GetMember(ctx, projectID, req.UserID)
-	if err == nil {
+	memberCheck, err := s.projectRepo.GetMember(ctx, projectID, req.UserID)
+
+	s.logger.Info("Project member check result", map[string]interface{}{
+		"project_id":    projectID,
+		"user_id":       req.UserID,
+		"member":        memberCheck,
+		"error":         err,
+		"is_member_nil": memberCheck == nil,
+	})
+
+	if err != nil {
+		return nil, err // Возвращаем ошибку запроса
+	}
+
+	// Если member не nil, значит пользователь уже состоит в проекте
+	if memberCheck != nil {
 		return nil, ErrMemberAlreadyExists
 	}
 

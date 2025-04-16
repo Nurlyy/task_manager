@@ -32,6 +32,7 @@ type AppConfig struct {
 	Environment string
 	LogLevel    string
 	Debug       bool
+	BaseURL     string
 }
 
 // HTTPConfig содержит настройки HTTP-сервера
@@ -125,13 +126,14 @@ type MonitoringConfig struct {
 func Load() (*Config, error) {
 	// Загружаем .env файл, если он существует
 	_ = godotenv.Load()
-
+	fmt.Println("THIS IS TELEGRAM_TOKEN:", os.Getenv("TELEGRAM_TOKEN"))
 	config := &Config{
 		App: AppConfig{
 			Name:        getEnv("APP_NAME", "task-tracker"),
 			Environment: getEnv("APP_ENV", "development"),
 			LogLevel:    getEnv("LOG_LEVEL", "info"),
 			Debug:       getEnvAsBool("APP_DEBUG", true),
+			BaseURL:     getEnv("BASE_URL", ""),
 		},
 		HTTP: HTTPConfig{
 			Port:            getEnv("HTTP_PORT", "8080"),
@@ -189,6 +191,9 @@ func Load() (*Config, error) {
 			Telegram: TelegramConfig{
 				Token: getEnv("TELEGRAM_TOKEN", ""),
 			},
+		},
+		Telegram: TelegramConfig{
+			Token: getEnv("TELEGRAM_TOKEN", ""),
 		},
 		Monitoring: MonitoringConfig{
 			PrometheusEnabled: getEnvAsBool("PROMETHEUS_ENABLED", false),

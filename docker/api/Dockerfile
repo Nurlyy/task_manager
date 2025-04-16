@@ -36,11 +36,15 @@ COPY --from=builder /app/configs /app/configs
 # Указание рабочего каталога
 WORKDIR /app
 
-# Переключение на непривилегированного пользователя
-USER appuser
+
 
 # Объявление порта
 EXPOSE 8080
 
-# Указание точки входа
-ENTRYPOINT ["/app/api-server"]
+COPY scripts/wait-for-kafka.sh /app/wait-for-kafka.sh
+RUN chmod +x /app/wait-for-kafka.sh
+
+# Переключение на непривилегированного пользователя
+USER appuser
+
+ENTRYPOINT ["/app/wait-for-kafka.sh", "/app/api-server"]

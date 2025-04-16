@@ -19,6 +19,7 @@ services:
       - REDIS_PORT=6379
       - KAFKA_BROKERS=kafka:9092
       - JWT_SECRET=your_jwt_secret_key_change_in_production
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - LOG_LEVEL=info
     depends_on:
       - postgres
@@ -155,15 +156,17 @@ services:
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
     volumes:
       - kafka-data:/bitnami/kafka
     networks:
       - backend-network
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Сервис для отладки отправки email
   mailhog:

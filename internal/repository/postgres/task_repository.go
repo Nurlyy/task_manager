@@ -43,7 +43,9 @@ func (r *TaskRepository) Create(ctx context.Context, task *domain.Task) error {
 	}()
 
 	// Устанавливаем значение app.current_user_id для триггера
-	if _, err = tx.ExecContext(ctx, "SET LOCAL app.current_user_id = $1", task.CreatedBy); err != nil {
+	qq := fmt.Sprintf(`SET LOCAL app.current_user_id = '%s'`, task.CreatedBy)
+
+	if _, err = tx.ExecContext(ctx, qq); err != nil {
 		return fmt.Errorf("failed to set local variable: %w", err)
 	}
 
@@ -490,10 +492,10 @@ func (r *TaskRepository) GetOverdueTasks(ctx context.Context, filter repository.
 func (r *TaskRepository) GetUpcomingTasks(ctx context.Context, daysThreshold int, filter repository.TaskFilter) ([]*domain.Task, error) {
 	now := time.Now()
 	thresholdDate := now.AddDate(0, 0, daysThreshold)
-	
+
 	filter.DueAfter = &now
 	filter.DueBefore = &thresholdDate
-	
+
 	return r.List(ctx, filter)
 }
 
@@ -634,7 +636,7 @@ func (r *TaskRepository) UpdateAssignee(ctx context.Context, taskID string, assi
 	result, err := tx.ExecContext(ctx, query, assigneeID, time.Now(), taskID)
 	if err != nil {
 		r.logger.Error("Failed to update task assignee", err, map[string]interface{}{
-			"task_id":    taskID,
+			"task_id":     taskID,
 			"assignee_id": assigneeID,
 		})
 		return fmt.Errorf("failed to update task assignee: %w", err)
@@ -898,7 +900,7 @@ func (r *TaskRepository) buildWhereClause(filter repository.TaskFilter) (string,
 			args = append(args, tag)
 			argIndex++
 		}
-		conditions = append(conditions, fmt.Sprintf("id IN (SELECT task_id FROM task_tags WHERE tag IN (%s) GROUP BY task_id HAVING COUNT(DISTINCT tag) = %d)", 
+		conditions = append(conditions, fmt.Sprintf("id IN (SELECT task_id FROM task_tags WHERE tag IN (%s) GROUP BY task_id HAVING COUNT(DISTINCT tag) = %d)",
 			strings.Join(tagConditions, ", "), len(filter.Tags)))
 	}
 
@@ -924,18 +926,18 @@ func (r *TaskRepository) buildOrderClause(filter repository.TaskFilter) string {
 
 		// Проверяем, что поле сортировки допустимо
 		allowedFields := map[string]bool{
-			"id":             true,
-			"title":          true,
-			"status":         true,
-			"priority":       true,
-			"assignee_id":    true,
-			"created_by":     true,
-			"due_date":       true,
-			"created_at":     true,
-			"updated_at":     true,
-			"completed_at":   true,
+			"id":              true,
+			"title":           true,
+			"status":          true,
+			"priority":        true,
+			"assignee_id":     true,
+			"created_by":      true,
+			"due_date":        true,
+			"created_at":      true,
+			"updated_at":      true,
+			"completed_at":    true,
 			"estimated_hours": true,
-			"spent_hours":    true,
+			"spent_hours":     true,
 		}
 
 		if allowedFields[*filter.OrderBy] {
